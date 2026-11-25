@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishLab | Sign-in Awareness Simulation</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1f1f1f;
+            font-family: Arial, Helvetica, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            color: #e3e3e3;
+        }
+
+        .container {
+            background: #0e0e0e;
+            width: 100%;
+            max-width: 1192px;
+            min-height: 402px;
+            border-radius: 28px;
+            padding: 40px 36px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 35px;
+        }
+
+        .container.complete-card {
+            grid-template-columns: 1fr;
+            max-width: 680px;
+            min-height: auto;
+            gap: 20px;
+        }
+
+        .step-animate {
+            animation: stepFadeIn 0.22s ease-out;
+        }
+
+        @keyframes stepFadeIn {
+            from {
+                opacity: 0;
+                transform: translateX(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* LEFT SECTION */
+
+        .left {
+            padding-top: 0;
+        }
+
+        .logo-img {
+            height: 60px;
+            width: auto;
+            display: block;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 36px;
+            font-weight: 400;
+            margin-top: 29px;
+            margin-bottom: 20px;
+        }
+
+        .left p {
+            font-size: 16px;
+        }
+
+        .left .disclosure {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #a8c7fa;
+            line-height: 1.5;
+        }
+
+        .account-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+            padding: 6px 12px 6px 8px;
+            border: 1px solid #5f6368;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #e3e3e3;
+        }
+
+        .account-pill-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #a8c7fa;
+            color: #062e6f;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        /* RIGHT SECTION */
+
+        .right {
+            padding-top: 76px;
+        }
+
+        .input-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        .input-wrapper label {
+            position: absolute;
+            top: -9px;
+            left: 12px;
+            background: #0e0e0e;
+            padding: 0 5px;
+            font-size: 12px;
+            color: #a8c7fa;
+        }
+
+        .input-wrapper input {
+            width: 100%;
+            height: 56px;
+            background: transparent;
+            border: 2px solid #a8c7fa;
+            border-radius: 4px;
+            outline: none;
+            padding: 12px 15px;
+            color: white;
+            font-size: 16px;
+        }
+
+        .input-wrapper input:focus {
+            border-color: #a8c7fa;
+        }
+
+        .input-wrapper input.invalid {
+            border-color: #f28b82;
+        }
+
+        .forgot {
+            display: inline-block;
+            margin-top: 12px;
+            color: #a8c7fa;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .show-password-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 14px;
+            font-size: 14px;
+            color: #e3e3e3;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .show-password-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #a8c7fa;
+            cursor: pointer;
+        }
+
+        .guest {
+            font-size: 14px;
+            line-height: 21px;
+            margin-top: 47px;
+        }
+
+        .guest a {
+            color: #a8c7fa;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        /* BUTTONS */
+
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 35px;
+            margin-top: 42px;
+        }
+
+        button {
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .create {
+            background: transparent;
+            color: #a8c7fa;
+        }
+
+        .next {
+            background: #a8c7fa;
+            color: #062e6f;
+            padding: 13px 27px;
+            border-radius: 30px;
+        }
+
+        .next:hover {
+            background: #c2d7ff;
+        }
+
+        /* MESSAGE */
+
+        .message {
+            display: none;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #f28b82;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .footer-note {
+            margin-top: 18px;
+            text-align: center;
+            color: #9aa0a6;
+            font-size: 11px;
+            letter-spacing: 0.4px;
+        }
+
+        .tips {
+            margin: 12px 0 0;
+            padding-left: 20px;
+            color: #bdc1c6;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .notice {
+            margin-top: 16px;
+            padding: 14px 16px;
+            background: #1b2a1f;
+            border: 1px solid #2d4a34;
+            border-radius: 10px;
+            font-size: 13px;
+            color: #9fd8ae;
+            text-align: left;
+        }
+
+        /* MOBILE RESPONSIVENESS */
+
+        @media (max-width: 700px) {
+
+            body {
+                padding: 15px;
+                align-items: flex-start;
+            }
+
+            .container {
+                grid-template-columns: 1fr;
+                gap: 25px;
+                padding: 30px 24px;
+                min-height: auto;
+            }
+
+            .right {
+                padding-top: 15px;
+            }
+
+            .guest {
+                margin-top: 30px;
+            }
+
+            .actions {
+                margin-top: 35px;
+                gap: 20px;
+            }
+
+            h1 {
+                font-size: 32px;
+            }
+        }
+
+    </style>
+</head>
+
+<body>
+
+    <!-- STEP 1: EMAIL -->
+    <main class="container" id="emailStep">
+
+        <!-- LEFT SECTION -->
+
+        <section class="left">
+
+            <img class="logo-img" src="{{ url_for('static', filename='brand-logo.png') }}" alt="2Seconds Logistics">
+
+            <h1>Sign in</h1>
+
+            <p>Use your account</p>
+
+        </section>
+
+
+        <!-- RIGHT SECTION -->
+
+        <section class="right">
+
+            <div class="input-wrapper">
+
+                <label for="email">Email or phone</label>
+
+                <input
+                    type="text"
+                    id="email"
+                    autocomplete="off"
+                >
+
+            </div>
+
+            <a href="#" class="forgot" id="forgotEmailLink">Forgot email?</a>
+
+            <p class="guest">
+                Not your computer? Use Guest mode to sign in privately.
+                <a href="#" id="guestLearnLink">Learn more about using Guest mode</a>
+            </p>
+
+            <div class="actions">
+
+                <button type="button" class="create" id="createBtn">
+                    Create account
+                </button>
+
+                <button type="button" class="next" id="nextBtn">
+                    Next
+                </button>
+
+            </div>
+
+            <p class="message" id="message"></p>
+
+        </section>
+
+    </main>
+
+    <!-- STEP 2: PASSWORD -->
+    <main class="container hidden" id="passwordStep">
+
+        <!-- LEFT SECTION -->
+
+        <section class="left">
+
+            <img class="logo-img" src="{{ url_for('static', filename='brand-logo.png') }}" alt="2Seconds Logistics">
+
+            <h1>Welcome</h1>
+
+        </section>
+
+
+        <!-- RIGHT SECTION -->
+
+        <section class="right">
+
+            <div class="input-wrapper">
+
+                <label for="password">Enter your password</label>
+
+                <input
+                    type="password"
+                    id="password"
+                    autocomplete="new-password"
+                >
+
+            </div>
+
+            <label class="show-password-row" for="showPasswordToggle">
+                <input type="checkbox" id="showPasswordToggle">
+                <span>Show password</span>
+            </label>
+
+            <div class="actions">
+
+                <button type="button" class="create" id="forgotPasswordBtn">
+                    Forgot password?
+                </button>
+
+                <button type="button" class="next" id="passwordNextBtn">
+                    Next
+                </button>
+
+            </div>
+
+            <p class="message" id="passwordMessage"></p>
+
+        </section>
+
+    </main>
+
+    <!-- STEP 3: EXERCISE COMPLETED -->
+    <main class="container complete-card hidden" id="completeStep">
+
+        <section class="left">
+
+            <img class="logo-img" src="{{ url_for('static', filename='brand-logo.png') }}" alt="2Seconds Logistics">
+
+            <h1>Login successful</h1>
+
+        </section>
+
+    </main>
+
+    <div class="footer-note">PHISHLAB SECURITY AWARENESS TRAINING</div>
+
+
+    <!-- JAVASCRIPT -->
+
+    <script>
+
+        window.PHISHLAB_TOKEN = "{{ token }}";
+        window.PHISHLAB_CSRF = "{{ csrf_token }}";
+
+        async function recordEvent(eventType) {
+            try {
+                await fetch("/simulation-event", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": window.PHISHLAB_CSRF
+                    },
+                    body: JSON.stringify({
+                        token: window.PHISHLAB_TOKEN,
+                        event: eventType
+                    })
+                });
+            } catch (_) {
+                // Keep UI responsive even if event logging fails in preview.
+            }
+        }
+
+        const emailStep = document.getElementById("emailStep");
+        const passwordStep = document.getElementById("passwordStep");
+        const completeStep = document.getElementById("completeStep");
+
+        const nextBtn = document.getElementById("nextBtn");
+        const emailInput = document.getElementById("email");
+        const message = document.getElementById("message");
+        const createBtn = document.getElementById("createBtn");
+        const forgotEmailLink = document.getElementById("forgotEmailLink");
+        const guestLearnLink = document.getElementById("guestLearnLink");
+
+        const passwordInput = document.getElementById("password");
+        const passwordNextBtn = document.getElementById("passwordNextBtn");
+        const passwordMessage = document.getElementById("passwordMessage");
+        const showPasswordToggle = document.getElementById("showPasswordToggle");
+        const forgotPasswordBtn = document.getElementById("forgotPasswordBtn");
+
+        function showEmailMessage(text) {
+            message.textContent = text;
+            message.style.display = "block";
+        }
+
+        function showPasswordMessage(text) {
+            passwordMessage.textContent = text;
+            passwordMessage.style.display = "block";
+        }
+
+        async function handleEmailNext() {
+            const value = emailInput.value.trim();
+
+            if (value === "") {
+                emailInput.classList.add("invalid");
+                showEmailMessage("Enter an email or phone number.");
+                emailInput.focus();
+                return;
+            }
+
+            emailInput.classList.remove("invalid");
+            message.style.display = "none";
+
+            // Discard entered value immediately; never transmit or store it.
+            emailInput.value = "";
+
+            await recordEvent("email_stage");
+
+            emailStep.classList.add("hidden");
+            passwordStep.classList.remove("hidden");
+            passwordStep.classList.add("step-animate");
+            passwordInput.focus();
+        }
+
+        async function handlePasswordNext() {
+            if (!passwordInput.value) {
+                passwordInput.classList.add("invalid");
+                showPasswordMessage("Enter a dummy password to continue the exercise.");
+                passwordInput.focus();
+                return;
+            }
+
+            passwordInput.classList.remove("invalid");
+            passwordMessage.style.display = "none";
+
+            // Discard dummy value immediately; never transmit or store it.
+            passwordInput.value = "";
+
+            await recordEvent("password_stage");
+
+            passwordStep.classList.add("hidden");
+            completeStep.classList.remove("hidden");
+            completeStep.classList.add("step-animate");
+
+            await recordEvent("simulation_completed");
+
+            window.setTimeout(function () {
+                completeStep.classList.add("hidden");
+                completeStep.classList.remove("step-animate");
+                emailStep.classList.remove("hidden");
+                emailStep.classList.add("step-animate");
+                emailInput.value = "";
+                passwordInput.value = "";
+                emailInput.focus();
+            }, 2000);
+        }
+
+        nextBtn.addEventListener("click", handleEmailNext);
+
+        emailInput.addEventListener("input", function () {
+            emailInput.classList.remove("invalid");
+            message.style.display = "none";
+        });
+
+        emailInput.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                handleEmailNext();
+            }
+        });
+
+        createBtn.addEventListener("click", function () {
+            showEmailMessage("Create account is disabled in this PhishLab training simulation.");
+        });
+
+        forgotEmailLink.addEventListener("click", function (event) {
+            event.preventDefault();
+            showEmailMessage("Forgot email is disabled in this PhishLab training simulation.");
+        });
+
+        guestLearnLink.addEventListener("click", function (event) {
+            event.preventDefault();
+            showEmailMessage("This is a PhishLab awareness exercise — enter any test value and click Next.");
+        });
+
+        passwordNextBtn.addEventListener("click", handlePasswordNext);
+
+        passwordInput.addEventListener("input", function () {
+            passwordInput.classList.remove("invalid");
+            passwordMessage.style.display = "none";
+        });
+
+        passwordInput.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                handlePasswordNext();
+            }
+        });
+
+        showPasswordToggle.addEventListener("change", function () {
+            passwordInput.type = showPasswordToggle.checked ? "text" : "password";
+        });
+
+        forgotPasswordBtn.addEventListener("click", function () {
+            showPasswordMessage("Forgot password is disabled in this PhishLab training simulation.");
+        });
+
+    </script>
+
+</body>
+</html>
