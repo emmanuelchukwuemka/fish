@@ -97,6 +97,9 @@ input,textarea,select{width:100%;background:#fff;color:var(--text);border:1px so
 input:focus,textarea:focus,select:focus{outline:2px solid #2f6fed33;border-color:var(--blue)}
 .form-card{max-width:680px}
 .detail-grid{display:grid;gap:16px}
+.copy-row{display:flex;gap:8px;align-items:flex-start}
+.copy-row input,.copy-row textarea{flex:1}
+.copy-row button{white-space:nowrap}
 input[readonly]{background:#f6f8fc;color:var(--text);cursor:default}
 .hidden{display:none!important}
 

@@ -244,9 +244,6 @@ def dashboard():
           SELECT c.*,
           (SELECT COUNT(*) FROM recipients r WHERE r.campaign_id=c.id) AS recipient_count,
           (SELECT COUNT(*) FROM recipients r WHERE r.campaign_id=c.id AND r.sent_at IS NOT NULL) AS delivered,
-          (SELECT COUNT(*) FROM events e JOIN recipients r ON r.id=e.recipient_id WHERE r.campaign_id=c.id AND e.event_type='open') AS opens,
-          (SELECT COUNT(*) FROM events e JOIN recipients r ON r.id=e.recipient_id WHERE r.campaign_id=c.id AND e.event_type='click') AS clicks,
-          (SELECT COUNT(*) FROM events e JOIN recipients r ON r.id=e.recipient_id WHERE r.campaign_id=c.id AND e.event_type='submission_attempt') AS submissions,
           (SELECT COUNT(DISTINCT e.recipient_id) FROM events e JOIN recipients r ON r.id=e.recipient_id WHERE r.campaign_id=c.id AND e.event_type='simulation_visit') AS sim_visits,
           (SELECT COUNT(DISTINCT e.recipient_id) FROM events e JOIN recipients r ON r.id=e.recipient_id WHERE r.campaign_id=c.id AND e.event_type='email_stage') AS email_stage,
           (SELECT COUNT(DISTINCT e.recipient_id) FROM events e JOIN recipients r ON r.id=e.recipient_id WHERE r.campaign_id=c.id AND e.event_type='password_stage') AS password_stage,
@@ -448,6 +445,23 @@ def _campaign_recipients(campaign_id):
             "SELECT email, token FROM recipients WHERE campaign_id=?", (campaign_id,))]
         return campaign, recipients
 
+@app.route("/campaigns/<int:campaign_id>/message")
+@login_required
+def campaign_message(campaign_id):
+    campaign, recipients = _campaign_recipients(campaign_id)
+    if not campaign:
+        abort(404)
+    messages = []
+    for email, token in recipients:
+        link = f"{BASE_URL}/simulation/{token}"
+        messages.append({
+            "email": email,
+            "subject": campaign["subject"],
+            "body": campaign["body"] + "\n\nOpen the authorized awareness exercise: " + link,
+            "link": link,
+        })
+    return render_template("campaign_message.html", campaign=campaign, messages=messages)
+
 @app.route("/gammadyne/dry-run", methods=["POST"])
 @login_required
 def gammadyne_dry_run():
@@ -563,29 +577,6 @@ def send_simulation_notification(email, confirm_email, timestamp, event_status):
     else:
         record_simulated_send(message)
 
-@app.route("/track/<token>")
-def track(token):
-    if not record_event(token, "click"):
-        abort(404)
-    return render_template("landing.html", token=token)
-
-@app.route("/track/<token>/open.gif")
-def open_pixel(token):
-    record_event(token, "open")
-    # Transparent 1x1 GIF. Email clients may suppress remote images.
-    pixel = bytes.fromhex("47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b")
-    response = make_response(pixel)
-    response.headers["Content-Type"] = "image/gif"
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-    return response
-
-@app.route("/track/<token>/submit", methods=["POST"])
-def submit_attempt(token):
-    if not record_event(token, "submission_attempt"):
-        abort(404)
-    # Deliberately discard all submitted fields. Never persist or log their values.
-    return render_template("training_complete.html")
-
 SIMULATION_EVENT_TYPES = {"email_stage", "password_stage", "simulation_completed"}
 
 @app.route("/simulation/<token>")
@@ -664,9 +655,6 @@ def api_events():
         """, (after_id,)).fetchall()
         totals = con.execute("""
           SELECT
-          (SELECT COUNT(*) FROM events WHERE event_type='open') AS opens,
-          (SELECT COUNT(*) FROM events WHERE event_type='click') AS clicks,
-          (SELECT COUNT(*) FROM events WHERE event_type='submission_attempt') AS submissions,
           (SELECT COUNT(DISTINCT recipient_id) FROM events WHERE event_type='simulation_visit') AS sim_visits,
           (SELECT COUNT(DISTINCT recipient_id) FROM events WHERE event_type='email_stage') AS email_stage,
           (SELECT COUNT(DISTINCT recipient_id) FROM events WHERE event_type='password_stage') AS password_stage,

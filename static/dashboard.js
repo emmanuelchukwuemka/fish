@@ -1,10 +1,8 @@
+const AT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-5.5 8.3"/></svg>';
 const EVENT_ICONS = {
-  open: ["blue", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>'],
-  click: ["purple", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M9 3v3M5 5l2 2M3 11h3"/><path d="M13 13 21 16l-3.5 1.5L16 21Z"/></svg>'],
-  submission_attempt: ["orange", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'],
   simulation_visit: ["blue", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>'],
-  email_stage: ["orange", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-5.5 8.3"/></svg>'],
-  password_stage: ["purple", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'],
+  email_stage: ["orange", AT_ICON],
+  password_stage: ["purple", AT_ICON],
   simulation_completed: ["green", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-5"/></svg>'],
 };
 
@@ -14,9 +12,6 @@ async function refresh() {
     const res = await fetch(`/api/events?after=${lastId}`, { cache: "no-store" });
     if (!res.ok) return;
     const data = await res.json();
-    document.getElementById("opens").textContent = data.totals.opens;
-    document.getElementById("clicks").textContent = data.totals.clicks;
-    document.getElementById("submissions").textContent = data.totals.submissions;
     document.getElementById("sim_visits").textContent = data.totals.sim_visits;
     document.getElementById("email_stage").textContent = data.totals.email_stage;
     document.getElementById("password_stage").textContent = data.totals.password_stage;

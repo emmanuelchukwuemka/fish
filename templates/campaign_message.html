@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block content %}
+<a class="back" href="{{ url_for('dashboard') }}">← Dashboard</a>
+<div class="heading-with-icon" style="margin-bottom:22px">
+  <span class="page-icon">{{ icon('mail') }}</span>
+  <div><p class="eyebrow">COPY MAIL</p><h1>{{ campaign.name }}</h1><p class="muted">Copy the subject, body, or link below and paste it into any email client.</p></div>
+</div>
+{% for m in messages %}
+<section class="card">
+  <div class="section-head"><h2>To: {{ m.email }}</h2></div>
+  <label>Subject
+    <div class="copy-row"><input type="text" readonly value="{{ m.subject }}" id="subject-{{ loop.index }}"><button type="button" class="btn-outline sm copy-btn" data-target="subject-{{ loop.index }}">{{ icon('download') }} Copy</button></div>
+  </label>
+  <label>Message body
+    <div class="copy-row"><textarea readonly rows="6" id="body-{{ loop.index }}">{{ m.body }}</textarea><button type="button" class="btn-outline sm copy-btn" data-target="body-{{ loop.index }}">{{ icon('download') }} Copy</button></div>
+  </label>
+  <label>Link only
+    <div class="copy-row"><input type="text" readonly value="{{ m.link }}" id="link-{{ loop.index }}"><button type="button" class="btn-outline sm copy-btn" data-target="link-{{ loop.index }}">{{ icon('download') }} Copy</button></div>
+  </label>
+</section>
+{% else %}<p class="muted">This campaign has no recipients.</p>{% endfor %}
+
+<script>
+document.querySelectorAll(".copy-btn").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    const el = document.getElementById(btn.dataset.target);
+    el.select();
+    navigator.clipboard.writeText(el.value).then(function () {
+      const original = btn.innerHTML;
+      btn.textContent = "Copied!";
+      setTimeout(function () { btn.innerHTML = original; }, 1500);
+    });
+  });
+});
+</script>
+{% endblock %}
