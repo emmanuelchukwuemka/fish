@@ -100,14 +100,6 @@ input:focus,textarea:focus,select:focus{outline:2px solid #2f6fed33;border-color
 input[readonly]{background:#f6f8fc;color:var(--text);cursor:default}
 .hidden{display:none!important}
 
-/* password reveal toggle (never shows a real captured password — see detail view) */
-.pw-mask{display:inline-flex;align-items:center;gap:8px}
-.pw-dots{letter-spacing:3px;color:var(--muted);font-weight:700}
-.pw-real{font-size:11.5px;color:var(--muted);font-style:italic;white-space:normal}
-.pw-toggle{background:none;border:0;padding:2px;cursor:pointer;color:var(--muted);display:inline-flex;align-items:center}
-.pw-toggle:hover{color:var(--blue)}
-.pw-toggle .icon{width:16px;height:16px}
-
 /* pagination */
 .pagination{display:flex;align-items:center;justify-content:space-between;margin-top:16px;gap:14px;flex-wrap:wrap}
 .page-links{display:flex;align-items:center;gap:6px}

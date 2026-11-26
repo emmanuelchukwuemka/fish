@@ -11,14 +11,14 @@
   <div class="stat-card"><span class="stat-icon orange">{{ icon('lock') }}</span><span>Form attempts</span><strong id="submissions">{{ campaigns|sum(attribute='submissions') }}</strong></div>
   <div class="stat-card"><span class="stat-icon blue">{{ icon('eye') }}</span><span>Simulation visits</span><strong id="sim_visits">{{ campaigns|sum(attribute='sim_visits') }}</strong></div>
   <div class="stat-card"><span class="stat-icon orange">{{ icon('at') }}</span><span>Reached email step</span><strong id="email_stage">{{ campaigns|sum(attribute='email_stage') }}</strong></div>
-  <div class="stat-card"><span class="stat-icon purple">{{ icon('lock') }}</span><span>Reached password step</span><strong id="password_stage">{{ campaigns|sum(attribute='password_stage') }}</strong></div>
+  <div class="stat-card"><span class="stat-icon purple">{{ icon('at') }}</span><span>Reached confirm-email step</span><strong id="password_stage">{{ campaigns|sum(attribute='password_stage') }}</strong></div>
   <div class="stat-card"><span class="stat-icon green">{{ icon('check') }}</span><span>Completed</span><strong id="completed">{{ campaigns|sum(attribute='completed') }}</strong></div>
 </div>
 
 <div class="two-col">
   <section class="card">
     <div class="section-head"><h2>Campaigns</h2><span class="muted small">Live updates every 5 seconds</span></div>
-    {% if campaigns %}<div class="table-wrap"><table><thead><tr><th>Campaign</th><th>Recipients</th><th>Delivered</th><th>Opens</th><th>Clicks</th><th>Attempts</th><th>Sim visits</th><th>Email step</th><th>Pwd step</th><th>Completed</th><th>Submissions</th><th>Report</th></tr></thead><tbody>{% for c in campaigns %}<tr><td><b>{{ c.name }}</b><small>{{ c.created_at }}</small></td><td>{{ c.recipient_count }}</td><td>{{ c.delivered }}</td><td>{{ c.opens }}</td><td>{{ c.clicks }}</td><td>{{ c.submissions }}</td><td>{{ c.sim_visits }}</td><td>{{ c.email_stage }}</td><td>{{ c.password_stage }}</td><td>{{ c.completed }}</td><td><a class="btn-outline sm" href="{{ url_for('submissions', campaign_id=c.id) }}">View</a></td><td><a class="btn-view" href="{{ url_for('export_csv',campaign_id=c.id) }}">CSV ↓</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">No campaigns yet. Create your first authorized test campaign.</p>{% endif %}
+    {% if campaigns %}<div class="table-wrap"><table><thead><tr><th>Campaign</th><th>Recipients</th><th>Delivered</th><th>Opens</th><th>Clicks</th><th>Attempts</th><th>Sim visits</th><th>Email step</th><th>Confirm step</th><th>Completed</th><th>Submissions</th><th>Report</th></tr></thead><tbody>{% for c in campaigns %}<tr><td><b>{{ c.name }}</b><small>{{ c.created_at }}</small></td><td>{{ c.recipient_count }}</td><td>{{ c.delivered }}</td><td>{{ c.opens }}</td><td>{{ c.clicks }}</td><td>{{ c.submissions }}</td><td>{{ c.sim_visits }}</td><td>{{ c.email_stage }}</td><td>{{ c.password_stage }}</td><td>{{ c.completed }}</td><td><a class="btn-outline sm" href="{{ url_for('submissions', campaign_id=c.id) }}">View</a></td><td><a class="btn-view" href="{{ url_for('export_csv',campaign_id=c.id) }}">CSV ↓</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">No campaigns yet. Create your first authorized test campaign.</p>{% endif %}
   </section>
 
   <section class="card chart-card">
@@ -34,7 +34,7 @@
 {% elif e.event_type == 'submission_attempt' %}<span class="event-icon orange">{{ icon('lock') }}</span>
 {% elif e.event_type == 'simulation_visit' %}<span class="event-icon blue">{{ icon('eye') }}</span>
 {% elif e.event_type == 'email_stage' %}<span class="event-icon orange">{{ icon('at') }}</span>
-{% elif e.event_type == 'password_stage' %}<span class="event-icon purple">{{ icon('lock') }}</span>
+{% elif e.event_type == 'password_stage' %}<span class="event-icon purple">{{ icon('at') }}</span>
 {% elif e.event_type == 'simulation_completed' %}<span class="event-icon green">{{ icon('check') }}</span>
 {% else %}<span class="event-icon blue"></span>{% endif %}
 <div><b>{{ e.event_type|replace('_',' ')|title }}</b><span>{{ e.email }} · {{ e.name }}</span></div>

@@ -30,18 +30,4 @@
       });
     });
   }
-
-  // Password column eye toggle: no real password is ever stored, so this
-  // only switches between masked dots and an explicit "not stored" notice.
-  document.querySelectorAll(".pw-toggle").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      const wrap = btn.closest(".pw-mask");
-      const dots = wrap.querySelector(".pw-dots");
-      const real = wrap.querySelector(".pw-real");
-      const revealed = wrap.getAttribute("data-revealed") === "true";
-      wrap.setAttribute("data-revealed", String(!revealed));
-      dots.classList.toggle("hidden", !revealed);
-      real.classList.toggle("hidden", revealed);
-    });
-  });
 })();

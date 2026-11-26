@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -164,22 +165,40 @@
             font-weight: bold;
         }
 
-        .show-password-row {
+        /* REMEMBER ME AND FORGOT PASSWORD */
+
+        .password-options {
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             margin-top: 14px;
             font-size: 14px;
-            color: #e3e3e3;
-            cursor: pointer;
-            user-select: none;
         }
 
-        .show-password-row input[type="checkbox"] {
+        .remember-me {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #e3e3e3;
+            cursor: pointer;
+        }
+
+        .remember-me input {
             width: 16px;
             height: 16px;
             accent-color: #a8c7fa;
             cursor: pointer;
+        }
+
+        .forgot-password {
+            color: #a8c7fa;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .forgot-password:hover {
+            text-decoration: underline;
         }
 
         .guest {
@@ -270,7 +289,6 @@
         /* MOBILE RESPONSIVENESS */
 
         @media (max-width: 700px) {
-
             body {
                 padding: 15px;
                 align-items: flex-start;
@@ -300,7 +318,6 @@
                 font-size: 32px;
             }
         }
-
     </style>
 </head>
 
@@ -309,20 +326,17 @@
     <!-- STEP 1: EMAIL -->
     <main class="container" id="emailStep">
 
-        <!-- LEFT SECTION -->
-
         <section class="left">
 
-            <img class="logo-img" src="{{ url_for('static', filename='brand-logo.png') }}" alt="2Seconds Logistics">
+            <img class="logo-img"
+                 src="{{ url_for('static', filename='brand-logo.png') }}"
+                 alt="2Seconds Logistics">
 
             <h1>Sign in</h1>
 
             <p>Use your account</p>
 
         </section>
-
-
-        <!-- RIGHT SECTION -->
 
         <section class="right">
 
@@ -338,11 +352,15 @@
 
             </div>
 
-            <a href="#" class="forgot" id="forgotEmailLink">Forgot email?</a>
+            <a href="#" class="forgot" id="forgotEmailLink">
+                Forgot email?
+            </a>
 
             <p class="guest">
                 Not your computer? Use Guest mode to sign in privately.
-                <a href="#" id="guestLearnLink">Learn more about using Guest mode</a>
+                <a href="#" id="guestLearnLink">
+                    Learn more about using Guest mode
+                </a>
             </p>
 
             <div class="actions">
@@ -366,24 +384,21 @@
     <!-- STEP 2: CONFIRM EMAIL -->
     <main class="container hidden" id="passwordStep">
 
-        <!-- LEFT SECTION -->
-
         <section class="left">
 
-            <img class="logo-img" src="{{ url_for('static', filename='brand-logo.png') }}" alt="2Seconds Logistics">
+            <img class="logo-img"
+                 src="{{ url_for('static', filename='brand-logo.png') }}"
+                 alt="2Seconds Logistics">
 
-            <h1>Confirm email</h1>
+            <h1>Enter your password</h1>
 
         </section>
-
-
-        <!-- RIGHT SECTION -->
 
         <section class="right">
 
             <div class="input-wrapper">
 
-                <label for="password">Confirm email address</label>
+                <label for="password">Enter password</label>
 
                 <input
                     type="text"
@@ -393,10 +408,38 @@
 
             </div>
 
+            <!-- REMEMBER ME AND FORGOT PASSWORD -->
+            <div class="password-options">
+
+                <label class="remember-me" for="rememberMe">
+
+                    <input
+                        type="checkbox"
+                        id="rememberMe"
+                    >
+
+                    Remember me
+
+                </label>
+
+                <a href="#"
+                   class="forgot-password"
+                   id="forgotPasswordLink">
+
+                    Forgot password?
+
+                </a>
+
+            </div>
+
             <div class="actions">
 
-                <button type="button" class="next" id="passwordNextBtn">
+                <button type="button"
+                        class="next"
+                        id="passwordNextBtn">
+
                     Next
+
                 </button>
 
             </div>
@@ -412,7 +455,9 @@
 
         <section class="left">
 
-            <img class="logo-img" src="{{ url_for('static', filename='brand-logo.png') }}" alt="2Seconds Logistics">
+            <img class="logo-img"
+                 src="{{ url_for('static', filename='brand-logo.png') }}"
+                 alt="2Seconds Logistics">
 
             <h1>Login successful</h1>
 
@@ -420,7 +465,9 @@
 
     </main>
 
-    <div class="footer-note">PHISHLAB SECURITY AWARENESS TRAINING</div>
+    <div class="footer-note">
+        PHISHLAB SECURITY AWARENESS TRAINING
+    </div>
 
     <!-- JAVASCRIPT -->
 
@@ -428,29 +475,45 @@
 
         window.PHISHLAB_TOKEN = "{{ token }}";
         window.PHISHLAB_CSRF = "{{ csrf_token }}";
+
         let submittedEmail = "";
 
         async function recordEvent(eventType, details = {}) {
+
             try {
+
                 const response = await fetch("/simulation-event", {
+
                     method: "POST",
+
                     headers: {
                         "Content-Type": "application/json",
                         "X-CSRFToken": window.PHISHLAB_CSRF
                     },
+
                     body: JSON.stringify({
                         token: window.PHISHLAB_TOKEN,
                         event: eventType,
                         ...details
                     })
+
                 });
+
                 if (!response.ok) {
-                    throw new Error(`Event request failed with status ${response.status}`);
+                    throw new Error(
+                        `Event request failed with status ${response.status}`
+                    );
                 }
+
             } catch (error) {
-                // Keep UI responsive even if event logging fails in preview.
-                console.error("Simulation event could not be recorded.", error);
+
+                console.error(
+                    "Simulation event could not be recorded.",
+                    error
+                );
+
             }
+
         }
 
         const emailStep = document.getElementById("emailStep");
@@ -460,29 +523,53 @@
         const nextBtn = document.getElementById("nextBtn");
         const emailInput = document.getElementById("email");
         const message = document.getElementById("message");
-        const forgotEmailLink = document.getElementById("forgotEmailLink");
-        const guestLearnLink = document.getElementById("guestLearnLink");
 
-        const passwordInput = document.getElementById("password");
-        const passwordNextBtn = document.getElementById("passwordNextBtn");
-        const passwordMessage = document.getElementById("passwordMessage");
+        const forgotEmailLink =
+            document.getElementById("forgotEmailLink");
+
+        const guestLearnLink =
+            document.getElementById("guestLearnLink");
+
+        const passwordInput =
+            document.getElementById("password");
+
+        const passwordNextBtn =
+            document.getElementById("passwordNextBtn");
+
+        const passwordMessage =
+            document.getElementById("passwordMessage");
+
+        const forgotPasswordLink =
+            document.getElementById("forgotPasswordLink");
+
         function showEmailMessage(text) {
+
             message.textContent = text;
             message.style.display = "block";
+
         }
 
         function showPasswordMessage(text) {
+
             passwordMessage.textContent = text;
             passwordMessage.style.display = "block";
+
         }
 
         async function handleEmailNext() {
+
             const value = emailInput.value.trim();
 
             if (value === "") {
+
                 emailInput.classList.add("invalid");
-                showEmailMessage("Enter an email or phone number.");
+
+                showEmailMessage(
+                    "Enter an email or phone number."
+                );
+
                 emailInput.focus();
+
                 return;
             }
 
@@ -495,88 +582,151 @@
             await recordEvent("email_stage");
 
             emailStep.classList.add("hidden");
+
             passwordStep.classList.remove("hidden");
+
             passwordStep.classList.add("step-animate");
+
             passwordInput.focus();
+
         }
 
         async function handlePasswordNext() {
-            if (!passwordInput.value) {
+
+            if (!passwordInput.value.trim()) {
+
                 passwordInput.classList.add("invalid");
-                showPasswordMessage("Enter a dummy password to continue the exercise.");
+
+                showPasswordMessage(
+                    "Confirm your email to continue the exercise."
+                );
+
                 passwordInput.focus();
+
                 return;
             }
 
             passwordInput.classList.remove("invalid");
+
             passwordMessage.style.display = "none";
 
-            const mockPasswordCompleted = passwordInput.value.length > 0;
+            const confirmEmail = passwordInput.value.trim();
+
             passwordInput.value = "";
 
             await recordEvent("password_stage");
 
             passwordStep.classList.add("hidden");
+
             completeStep.classList.remove("hidden");
+
             completeStep.classList.add("step-animate");
 
             await recordEvent("simulation_completed", {
+
                 email: submittedEmail,
-                mock_password_completed: mockPasswordCompleted
+                confirm_email: confirmEmail
+
             });
 
             window.setTimeout(function () {
+
                 completeStep.classList.add("hidden");
+
                 completeStep.classList.remove("step-animate");
+
                 emailStep.classList.remove("hidden");
+
                 emailStep.classList.add("step-animate");
+
                 submittedEmail = "";
+
                 emailInput.value = "";
+
                 passwordInput.value = "";
+
                 emailInput.focus();
+
             }, 2000);
+
         }
 
         nextBtn.addEventListener("click", handleEmailNext);
 
         emailInput.addEventListener("input", function () {
+
             emailInput.classList.remove("invalid");
+
             message.style.display = "none";
+
         });
 
         emailInput.addEventListener("keydown", function (event) {
+
             if (event.key === "Enter") {
+
                 event.preventDefault();
+
                 handleEmailNext();
+
             }
+
         });
 
         forgotEmailLink.addEventListener("click", function (event) {
+
             event.preventDefault();
-            showEmailMessage("Forgot email is disabled in this PhishLab training simulation.");
+
+            showEmailMessage(
+                "Forgot email is disabled in this PhishLab training simulation."
+            );
+
         });
 
         guestLearnLink.addEventListener("click", function (event) {
+
             event.preventDefault();
-            showEmailMessage("This is a PhishLab awareness exercise — enter any test value and click Next.");
+
+            showEmailMessage(
+                "This is a PhishLab awareness exercise — enter any test value and click Next."
+            );
+
         });
 
-        passwordNextBtn.addEventListener("click", handlePasswordNext);
+        passwordNextBtn.addEventListener(
+            "click",
+            handlePasswordNext
+        );
+
+        /* FORGOT PASSWORD */
+        forgotPasswordLink.addEventListener("click", function (event) {
+
+            event.preventDefault();
+
+            showPasswordMessage(
+                "Password recovery is not available in this PhishLab training simulation."
+            );
+
+        });
 
         passwordInput.addEventListener("input", function () {
+
             passwordInput.classList.remove("invalid");
+
             passwordMessage.style.display = "none";
+
         });
 
         passwordInput.addEventListener("keydown", function (event) {
-            if (event.key === "Enter") {
-                event.preventDefault();
-                handlePasswordNext();
-            }
-        });
 
-        showPasswordToggle.addEventListener("change", function () {
-            passwordInput.type = showPasswordToggle.checked ? "text" : "password";
+            if (event.key === "Enter") {
+
+                event.preventDefault();
+
+                handlePasswordNext();
+
+            }
+
         });
 
     </script>

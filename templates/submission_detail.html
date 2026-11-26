@@ -10,7 +10,7 @@
     <label>Campaign subject<input value="{{ s.campaign_subject }}" readonly></label>
     <label>Original recipient (allowlisted test inbox)<input value="{{ s.recipient_email }}" readonly></label>
     <label>Submitted email<input value="{{ s.submitted_email or '—' }}" readonly></label>
-    <label>Password entered<input value="{{ 'Yes (text itself was never collected or stored)' if s.password_entered else 'No' }}" readonly></label>
+    <label>Confirmed email<input value="{{ s.confirm_email or '—' }}" readonly></label>
     <label>Admin notification status<input value="{{ 'Delivered' if s.status == 'success' else 'Failed to deliver' }}" readonly></label>
     <label>Submitted at<input value="{{ s.created_at }}" readonly></label>
   </div>

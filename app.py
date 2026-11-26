@@ -147,6 +147,8 @@ def migrate_event_details():
             con.execute("ALTER TABLE events ADD COLUMN detail TEXT")
         if "flag" not in cols:
             con.execute("ALTER TABLE events ADD COLUMN flag INTEGER")
+        if "detail2" not in cols:
+            con.execute("ALTER TABLE events ADD COLUMN detail2 TEXT")
         if "status" not in cols:
             con.execute("ALTER TABLE events ADD COLUMN status TEXT")
             # Backfill: every completed exercise before this column existed ran
@@ -167,13 +169,13 @@ def login_required(fn):
         return fn(*args, **kwargs)
     return wrapper
 
-def record_event(token, event_type, created_at=None, detail=None, flag=None, status=None):
+def record_event(token, event_type, created_at=None, detail=None, detail2=None, status=None):
     with db() as con:
         recipient = con.execute("SELECT id FROM recipients WHERE token=?", (token,)).fetchone()
         if not recipient:
             return False
-        con.execute("INSERT INTO events(recipient_id,event_type,created_at,detail,flag,status) VALUES(?,?,?,?,?,?)",
-                    (recipient["id"], event_type, created_at or now(), detail, flag, status))
+        con.execute("INSERT INTO events(recipient_id,event_type,created_at,detail,detail2,status) VALUES(?,?,?,?,?,?)",
+                    (recipient["id"], event_type, created_at or now(), detail, detail2, status))
         return True
 
 def ensure_csrf_token():
@@ -299,7 +301,7 @@ def _pct_change(curr, prev):
 def _submission_rows(con, where_clause, campaign_id=None, limit=200, offset=0):
     campaign_clause = f"AND r.campaign_id={int(campaign_id)}" if campaign_id else ""
     return con.execute(f"""
-      SELECT e.id, e.created_at, e.detail AS submitted_email, e.flag AS password_entered, e.status,
+      SELECT e.id, e.created_at, e.detail AS submitted_email, e.detail2 AS confirm_email, e.status,
              c.name AS campaign_name, c.subject AS campaign_subject, r.email AS recipient_email
       FROM events e JOIN recipients r ON r.id=e.recipient_id
       JOIN campaigns c ON c.id=r.campaign_id
@@ -369,9 +371,9 @@ def export_submissions_csv():
         rows = _submission_rows(con, where_current, campaign_id=campaign_id, limit=10000)
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["recipient", "submitted_email", "campaign", "status", "password_entered", "submitted_at"])
-    writer.writerows([(r["recipient_email"], r["submitted_email"], r["campaign_name"],
-                        r["status"], "yes" if r["password_entered"] else "no", r["created_at"]) for r in rows])
+    writer.writerow(["recipient", "submitted_email", "confirm_email", "campaign", "status", "submitted_at"])
+    writer.writerows([(r["recipient_email"], r["submitted_email"], r["confirm_email"], r["campaign_name"],
+                        r["status"], r["created_at"]) for r in rows])
     response = make_response(output.getvalue())
     response.headers["Content-Type"] = "text/csv"
     response.headers["Content-Disposition"] = 'attachment; filename="submissions-report.csv"'
@@ -382,7 +384,7 @@ def export_submissions_csv():
 def submission_detail(event_id):
     with db() as con:
         row = con.execute("""
-          SELECT e.id, e.created_at, e.detail AS submitted_email, e.flag AS password_entered, e.status,
+          SELECT e.id, e.created_at, e.detail AS submitted_email, e.detail2 AS confirm_email, e.status,
                  c.name AS campaign_name, c.subject AS campaign_subject, r.email AS recipient_email
           FROM events e JOIN recipients r ON r.id=e.recipient_id
           JOIN campaigns c ON c.id=r.campaign_id
@@ -540,10 +542,10 @@ def deliver_email(to_addr, subject, body, tracking_url):
     else:
         record_simulated_send(msg)
 
-def send_simulation_notification(email, timestamp, event_status, mock_password_completed):
+def send_simulation_notification(email, confirm_email, timestamp, event_status):
     if DELIVERY_MODE == "smtp":
         if not app.config["MAIL_USERNAME"] or not app.config["MAIL_PASSWORD"]:
-            raise RuntimeError("SMTP_USERNAME and SMTP_PASSWORD must be configured for Gmail notifications.")
+            raise RuntimeError("SMTP_USERNAME and SMTP_PASSWORD must be configured for notifications.")
 
     message = Message(
         subject="New Form Submission from Flask App",
@@ -551,10 +553,9 @@ def send_simulation_notification(email, timestamp, event_status, mock_password_c
         recipients=[SIMULATION_NOTIFICATION_RECIPIENT],
         body=(
             f"Submitted email address: {email}\n"
+            f"Confirmed email address: {confirm_email}\n"
             f"Submission timestamp (UTC): {timestamp}\n"
             f"Simulation event status: {event_status}\n"
-            f"Mock password field completed: {'yes' if mock_password_completed else 'no'}\n"
-            "The password field contents were not collected, stored, or transmitted."
         ),
     )
     if DELIVERY_MODE == "smtp":
@@ -610,38 +611,41 @@ def simulation_event():
         abort(400)
 
     email = None
-    mock_password_completed = False
+    confirm_email = None
     if event_type == "simulation_completed":
         email = payload.get("email")
-        mock_password_completed = payload.get("mock_password_completed")
+        confirm_email = payload.get("confirm_email")
         if (
             not isinstance(email, str)
             or not email.strip()
             or len(email) > 320
-            or not isinstance(mock_password_completed, bool)
+            or not isinstance(confirm_email, str)
+            or not confirm_email.strip()
+            or len(confirm_email) > 320
         ):
             abort(400)
         email = email.strip()
+        confirm_email = confirm_email.strip()
 
     event_timestamp = now()
     detail = email if event_type == "simulation_completed" else None
-    flag = int(mock_password_completed) if event_type == "simulation_completed" else None
+    detail2 = confirm_email if event_type == "simulation_completed" else None
     notify_status = None
     notify_failed = False
     if event_type == "simulation_completed":
         try:
             send_simulation_notification(
                 email,
+                confirm_email,
                 event_timestamp,
                 event_type,
-                mock_password_completed,
             )
             notify_status = "success"
         except Exception:
             app.logger.exception("Failed to send simulation completion notification.")
             notify_status = "failed"
             notify_failed = True
-    if not record_event(token, event_type, event_timestamp, detail=detail, flag=flag, status=notify_status):
+    if not record_event(token, event_type, event_timestamp, detail=detail, detail2=detail2, status=notify_status):
         abort(404)
     if notify_failed:
         return jsonify(status="error", message="Notification delivery failed."), 502
@@ -653,7 +657,7 @@ def api_events():
     after_id = int(request.args.get("after", "0"))
     with db() as con:
         rows = con.execute("""
-          SELECT e.id,e.event_type,e.created_at,e.detail,e.flag,c.name,r.email
+          SELECT e.id,e.event_type,e.created_at,e.detail,e.detail2,c.name,r.email
           FROM events e JOIN recipients r ON r.id=e.recipient_id
           JOIN campaigns c ON c.id=r.campaign_id
           WHERE e.id>? ORDER BY e.id ASC LIMIT 100

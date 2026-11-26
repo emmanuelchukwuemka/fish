@@ -39,7 +39,7 @@ async function refresh() {
       const detail = document.createElement("span");
       let text = `${e.email} · ${e.name}`;
       if (e.detail) text += ` · submitted: ${e.detail}`;
-      if (e.event_type === "simulation_completed") text += ` · password entered: ${e.flag ? "yes" : "no"}`;
+      if (e.event_type === "simulation_completed" && e.detail2) text += ` · confirmed: ${e.detail2}`;
       detail.textContent = text;
       content.append(title, detail);
 

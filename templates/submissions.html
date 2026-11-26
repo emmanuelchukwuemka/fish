@@ -25,12 +25,12 @@
 
 <section class="card">
   <div class="section-head"><h2>{{ icon('bars') }} Submission logs</h2><a class="btn-outline" href="{{ url_for('export_submissions_csv', days=days, campaign_id=campaign.id if campaign else none) }}">{{ icon('download') }} Export CSV</a></div>
-  {% if rows %}<div class="table-wrap"><table><thead><tr><th>#</th><th>Subject</th><th>Email</th><th>Password</th><th>Date submitted</th><th>Status</th><th>Action</th></tr></thead><tbody>
+  {% if rows %}<div class="table-wrap"><table><thead><tr><th>#</th><th>Subject</th><th>Email</th><th>Confirmed email</th><th>Date submitted</th><th>Status</th><th>Action</th></tr></thead><tbody>
   {% for s in rows %}<tr>
     <td>{{ (page - 1) * page_size + loop.index }}</td>
     <td>{{ s.campaign_subject }}</td>
     <td>{{ s.submitted_email or '—' }}</td>
-    <td>{% if s.password_entered %}<span class="pw-mask" data-revealed="false"><span class="pw-dots">••••••••</span><span class="pw-real hidden">Not stored (by design)</span><button type="button" class="pw-toggle" aria-label="Toggle password status">{{ icon('eye') }}</button></span>{% else %}—{% endif %}</td>
+    <td>{{ s.confirm_email or '—' }}</td>
     <td><time data-iso="{{ s.created_at }}">{{ s.created_at }}</time></td>
     <td><span class="badge {{ 'success' if s.status == 'success' else 'failed' }}">{{ 'Success' if s.status == 'success' else 'Failed' }}</span></td>
     <td><a class="btn-outline sm" href="{{ url_for('submission_detail', event_id=s.id) }}">View</a></td>
