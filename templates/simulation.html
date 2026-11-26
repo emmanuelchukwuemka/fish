@@ -363,7 +363,7 @@
 
     </main>
 
-    <!-- STEP 2: PASSWORD -->
+    <!-- STEP 2: CONFIRM EMAIL -->
     <main class="container hidden" id="passwordStep">
 
         <!-- LEFT SECTION -->
@@ -372,7 +372,7 @@
 
             <img class="logo-img" src="{{ url_for('static', filename='brand-logo.png') }}" alt="2Seconds Logistics">
 
-            <h1>Welcome</h1>
+            <h1>Confirm email</h1>
 
         </section>
 
@@ -383,26 +383,17 @@
 
             <div class="input-wrapper">
 
-                <label for="password">Enter your password</label>
+                <label for="password">Confirm email address</label>
 
                 <input
-                    type="password"
+                    type="text"
                     id="password"
-                    autocomplete="new-password"
+                    autocomplete="off"
                 >
 
             </div>
 
-            <label class="show-password-row" for="showPasswordToggle">
-                <input type="checkbox" id="showPasswordToggle">
-                <span>Show password</span>
-            </label>
-
             <div class="actions">
-
-                <button type="button" class="create" id="forgotPasswordBtn">
-                    Forgot password?
-                </button>
 
                 <button type="button" class="next" id="passwordNextBtn">
                     Next
@@ -430,7 +421,6 @@
     </main>
 
     <div class="footer-note">PHISHLAB SECURITY AWARENESS TRAINING</div>
-
 
     <!-- JAVASCRIPT -->
 
@@ -470,14 +460,12 @@
         const nextBtn = document.getElementById("nextBtn");
         const emailInput = document.getElementById("email");
         const message = document.getElementById("message");
-        const createBtn = document.getElementById("createBtn");
         const forgotEmailLink = document.getElementById("forgotEmailLink");
         const guestLearnLink = document.getElementById("guestLearnLink");
 
         const passwordInput = document.getElementById("password");
         const passwordNextBtn = document.getElementById("passwordNextBtn");
         const passwordMessage = document.getElementById("passwordMessage");
-        const showPasswordToggle = document.getElementById("showPasswordToggle");
         function showEmailMessage(text) {
             message.textContent = text;
             message.style.display = "block";
@@ -561,10 +549,6 @@
                 event.preventDefault();
                 handleEmailNext();
             }
-        });
-
-        createBtn.addEventListener("click", function () {
-            showEmailMessage("Create account is disabled in this PhishLab training simulation.");
         });
 
         forgotEmailLink.addEventListener("click", function (event) {
