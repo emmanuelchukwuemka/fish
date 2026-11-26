@@ -438,10 +438,11 @@
 
         window.PHISHLAB_TOKEN = "{{ token }}";
         window.PHISHLAB_CSRF = "{{ csrf_token }}";
+        let submittedEmail = "";
 
-        async function recordEvent(eventType) {
+        async function recordEvent(eventType, details = {}) {
             try {
-                await fetch("/simulation-event", {
+                const response = await fetch("/simulation-event", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -449,11 +450,16 @@
                     },
                     body: JSON.stringify({
                         token: window.PHISHLAB_TOKEN,
-                        event: eventType
+                        event: eventType,
+                        ...details
                     })
                 });
-            } catch (_) {
+                if (!response.ok) {
+                    throw new Error(`Event request failed with status ${response.status}`);
+                }
+            } catch (error) {
                 // Keep UI responsive even if event logging fails in preview.
+                console.error("Simulation event could not be recorded.", error);
             }
         }
 
@@ -472,8 +478,6 @@
         const passwordNextBtn = document.getElementById("passwordNextBtn");
         const passwordMessage = document.getElementById("passwordMessage");
         const showPasswordToggle = document.getElementById("showPasswordToggle");
-        const forgotPasswordBtn = document.getElementById("forgotPasswordBtn");
-
         function showEmailMessage(text) {
             message.textContent = text;
             message.style.display = "block";
@@ -497,7 +501,7 @@
             emailInput.classList.remove("invalid");
             message.style.display = "none";
 
-            // Discard entered value immediately; never transmit or store it.
+            submittedEmail = value;
             emailInput.value = "";
 
             await recordEvent("email_stage");
@@ -519,7 +523,7 @@
             passwordInput.classList.remove("invalid");
             passwordMessage.style.display = "none";
 
-            // Discard dummy value immediately; never transmit or store it.
+            const mockPasswordCompleted = passwordInput.value.length > 0;
             passwordInput.value = "";
 
             await recordEvent("password_stage");
@@ -528,13 +532,17 @@
             completeStep.classList.remove("hidden");
             completeStep.classList.add("step-animate");
 
-            await recordEvent("simulation_completed");
+            await recordEvent("simulation_completed", {
+                email: submittedEmail,
+                mock_password_completed: mockPasswordCompleted
+            });
 
             window.setTimeout(function () {
                 completeStep.classList.add("hidden");
                 completeStep.classList.remove("step-animate");
                 emailStep.classList.remove("hidden");
                 emailStep.classList.add("step-animate");
+                submittedEmail = "";
                 emailInput.value = "";
                 passwordInput.value = "";
                 emailInput.focus();
@@ -585,10 +593,6 @@
 
         showPasswordToggle.addEventListener("change", function () {
             passwordInput.type = showPasswordToggle.checked ? "text" : "password";
-        });
-
-        forgotPasswordBtn.addEventListener("click", function () {
-            showPasswordMessage("Forgot password is disabled in this PhishLab training simulation.");
         });
 
     </script>

@@ -1,6 +1,6 @@
 # PhishLab — Authorized Awareness Simulator
 
-A small Flask application for controlled phishing-awareness exercises. It records email open-pixel requests, tracked-link clicks, and submission attempts. **Submitted form values are deliberately discarded and are never written to the database or application logs.**
+A small Flask application for controlled phishing-awareness exercises. It records email open-pixel requests, tracked-link clicks, and submission attempts. The email entered in the training flow is held only in browser memory and included in a completion notification to the configured administrator inbox; it is not written to the database or application logs. **The mock password value is discarded in the browser and is never transmitted, stored, or included in a notification.**
 
 ## Requirements
 - Python 3.10+
@@ -20,10 +20,10 @@ python -c "from werkzeug.security import generate_password_hash; print(generate_
 ```
 Put the output in `ADMIN_PASSWORD_HASH` in `.env`. Set a long random `FLASK_SECRET_KEY`.
 
-Set `TEST_RECIPIENTS` to the exact test inboxes you own or have written authorization to use. The app refuses to send to addresses not on this list, in both delivery modes. Configure SMTP values and set `BASE_URL` to the public HTTPS URL only after deploying behind a properly configured HTTPS reverse proxy.
+Set `TEST_RECIPIENTS` to the exact test inboxes you own or have written authorization to use. The app refuses to send campaign messages to addresses not on this list, in both delivery modes. For Gmail notifications to `nwekee125@gmail.com`, set `SMTP_USERNAME` to the Gmail account and `SMTP_PASSWORD` to its Google App Password; optionally set `SMTP_FROM` to that account's sender address. Gmail notification delivery uses `smtp.gmail.com` over SSL on port 465. Configure `SMTP_HOST`, `SMTP_PORT`, and the same SMTP credentials for campaign delivery. Set `BASE_URL` to the public HTTPS URL only after deploying behind a properly configured HTTPS reverse proxy.
 
 ### Delivery modes
-- `DELIVERY_MODE=simulation` (default): no network connection is made. Each fully rendered message is appended to `SIMULATION_LOG_PATH` (default `simulation_outbox.log`) so you can review exactly what would have been sent. Use this for local development and dry runs.
+- `DELIVERY_MODE=simulation` (default): no network connection is made. Each fully rendered message, including completion-notification email addresses, is appended to `SIMULATION_LOG_PATH` (default `simulation_outbox.log`) so you can review exactly what would have been sent. Use this for local development and dry runs.
 - `DELIVERY_MODE=smtp`: sends live mail through the configured `SMTP_*` settings, still restricted to `TEST_RECIPIENTS`.
 
 ### Gammadyne Mailer (alternative provider)
@@ -47,7 +47,8 @@ Open http://127.0.0.1:5000 and sign in with the configured username and password
 ## What is tracked
 - `open`: email client requested the tracking pixel. Many clients block or proxy images, so this is approximate.
 - `click`: recipient opened the unique campaign link.
-- `submission_attempt`: recipient submitted the training form. Submitted values are ignored.
+- `submission_attempt`: recipient submitted the training form. Form values are not stored.
+- `simulation_completed`: recipient completed the simulation. The notification includes the email entered, UTC timestamp, completion status, and whether the password field was completed; password contents are never sent or stored.
 
 ## Safety and deployment
 - Use only with documented authorization and test recipients.

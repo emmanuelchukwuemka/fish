@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block content %}
+<a class="back" href="{{ url_for('submissions') }}">← Submissions</a>
+<div class="heading-with-icon" style="margin-bottom:22px">
+  <span class="page-icon">{{ icon('mail') }}</span>
+  <div><p class="eyebrow">SUBMISSION #{{ s.id }}</p><h1>{{ s.submitted_email or 'Unknown sender' }}</h1><p class="muted">Campaign: {{ s.campaign_name }}</p></div>
+</div>
+<section class="card form-card">
+  <div class="detail-grid">
+    <label>Campaign<input value="{{ s.campaign_name }}" readonly></label>
+    <label>Campaign subject<input value="{{ s.campaign_subject }}" readonly></label>
+    <label>Original recipient (allowlisted test inbox)<input value="{{ s.recipient_email }}" readonly></label>
+    <label>Submitted email<input value="{{ s.submitted_email or '—' }}" readonly></label>
+    <label>Password entered<input value="{{ 'Yes (text itself was never collected or stored)' if s.password_entered else 'No' }}" readonly></label>
+    <label>Admin notification status<input value="{{ 'Delivered' if s.status == 'success' else 'Failed to deliver' }}" readonly></label>
+    <label>Submitted at<input value="{{ s.created_at }}" readonly></label>
+  </div>
+</section>
+{% endblock %}

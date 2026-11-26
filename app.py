@@ -1,16 +1,33 @@
 import os, csv, io, json, secrets, sqlite3, smtplib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from email.message import EmailMessage
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, jsonify, make_response
+from flask_mail import Mail, Message
 from werkzeug.security import check_password_hash
 from dotenv import load_dotenv
-from integrations import gammadyne
 
 load_dotenv()
+
+from integrations import gammadyne
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "change-this-development-key")
+_mail_port = int(os.getenv("SMTP_PORT", "587"))
+app.config.update(
+    MAIL_SERVER=os.getenv("SMTP_HOST", ""),
+    MAIL_PORT=_mail_port,
+    MAIL_USE_SSL=_mail_port == 465,
+    MAIL_USE_TLS=_mail_port != 465,
+    MAIL_USERNAME=os.getenv("SMTP_USERNAME", ""),
+    MAIL_PASSWORD=os.getenv("SMTP_PASSWORD", ""),
+    MAIL_DEFAULT_SENDER=(
+        os.getenv("SMTP_FROM")
+        or os.getenv("SMTP_USERNAME")
+        or "nwekee125@gmail.com"
+    ),
+)
+mail = Mail(app)
 DB_PATH = os.getenv("DATABASE_PATH", "phishlab.db")
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:5000").rstrip("/")
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
@@ -18,6 +35,7 @@ ADMIN_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
 ALLOWED_RECIPIENTS = {x.strip().lower() for x in os.getenv("TEST_RECIPIENTS", "").split(",") if x.strip()}
 DELIVERY_MODE = os.getenv("DELIVERY_MODE", "simulation").strip().lower()
 SIMULATION_LOG_PATH = os.getenv("SIMULATION_LOG_PATH", "simulation_outbox.log")
+SIMULATION_NOTIFICATION_RECIPIENT = os.getenv("NOTIFICATION_RECIPIENT", "nwekee125@gmail.com")
 if DELIVERY_MODE not in ("smtp", "simulation"):
     raise RuntimeError(f"DELIVERY_MODE must be 'smtp' or 'simulation', got {DELIVERY_MODE!r}")
 
@@ -122,9 +140,24 @@ def _record_delivery_job(campaign_id, provider, result, requested_by=None, appro
             requested_by, approved_by, now(), result.started_at, result.finished_at,
         ))
 
+def migrate_event_details():
+    with db() as con:
+        cols = {row["name"] for row in con.execute("PRAGMA table_info(events)")}
+        if "detail" not in cols:
+            con.execute("ALTER TABLE events ADD COLUMN detail TEXT")
+        if "flag" not in cols:
+            con.execute("ALTER TABLE events ADD COLUMN flag INTEGER")
+        if "status" not in cols:
+            con.execute("ALTER TABLE events ADD COLUMN status TEXT")
+            # Backfill: every completed exercise before this column existed ran
+            # in the default simulation delivery mode, where notification send
+            # never fails, so treating historical rows as 'success' is accurate.
+            con.execute("UPDATE events SET status='success' WHERE event_type='simulation_completed' AND status IS NULL")
+
 init_db()
 migrate_db()
 migrate_delivery_jobs()
+migrate_event_details()
 
 def login_required(fn):
     @wraps(fn)
@@ -134,13 +167,13 @@ def login_required(fn):
         return fn(*args, **kwargs)
     return wrapper
 
-def record_event(token, event_type):
+def record_event(token, event_type, created_at=None, detail=None, flag=None, status=None):
     with db() as con:
         recipient = con.execute("SELECT id FROM recipients WHERE token=?", (token,)).fetchone()
         if not recipient:
             return False
-        con.execute("INSERT INTO events(recipient_id,event_type,created_at) VALUES(?,?,?)",
-                    (recipient["id"], event_type, now()))
+        con.execute("INSERT INTO events(recipient_id,event_type,created_at,detail,flag,status) VALUES(?,?,?,?,?,?)",
+                    (recipient["id"], event_type, created_at or now(), detail, flag, status))
         return True
 
 def ensure_csrf_token():
@@ -153,6 +186,16 @@ def ensure_csrf_token():
 @app.context_processor
 def inject_csrf_token():
     return {"csrf_token": ensure_csrf_token()}
+
+@app.context_processor
+def inject_admin_chrome():
+    if not session.get("admin"):
+        return {}
+    with db() as con:
+        captured_count = con.execute(
+            "SELECT COUNT(*) FROM events WHERE event_type='simulation_completed'"
+        ).fetchone()[0]
+    return {"admin_username": ADMIN_USER, "captured_count": captured_count, "delivery_mode": DELIVERY_MODE}
 
 CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
@@ -219,9 +262,135 @@ def dashboard():
           WHERE dj.provider='gammadyne'
           ORDER BY dj.id DESC LIMIT 25
         """).fetchall()
+        daily_rows = con.execute("""
+          SELECT date(created_at) AS day, COUNT(*) AS n
+          FROM events WHERE event_type='simulation_completed'
+            AND date(created_at) >= date('now','-6 days')
+          GROUP BY date(created_at)
+        """).fetchall()
+    counts_by_day = {r["day"]: r["n"] for r in daily_rows}
+    chart_labels, chart_counts = [], []
+    for i in range(6, -1, -1):
+        day = (datetime.now(timezone.utc) - timedelta(days=i)).date()
+        chart_labels.append(day.strftime("%a"))
+        chart_counts.append(counts_by_day.get(day.isoformat(), 0))
     return render_template("dashboard.html", campaigns=campaigns, recent=recent,
                             gammadyne_jobs=gammadyne_jobs,
+                            chart_labels=chart_labels, chart_counts=chart_counts,
                             gammadyne_configured=bool(gammadyne.GAMMADYNE_EXE_PATH))
+
+SUBMISSION_WINDOWS = {"7": 7, "30": 30, "90": 90, "all": None}
+SUBMISSIONS_PAGE_SIZE = 10
+
+def _submission_window_clauses(days):
+    window = SUBMISSION_WINDOWS.get(days, 30)
+    if window is None:
+        return "1=1", "1=0", None
+    current = f"date(e.created_at) >= date('now','-{window} days')"
+    previous = (f"date(e.created_at) >= date('now','-{window*2} days') "
+                f"AND date(e.created_at) < date('now','-{window} days')")
+    return current, previous, window
+
+def _pct_change(curr, prev):
+    if not prev:
+        return None
+    return round((curr - prev) / prev * 100)
+
+def _submission_rows(con, where_clause, campaign_id=None, limit=200, offset=0):
+    campaign_clause = f"AND r.campaign_id={int(campaign_id)}" if campaign_id else ""
+    return con.execute(f"""
+      SELECT e.id, e.created_at, e.detail AS submitted_email, e.flag AS password_entered, e.status,
+             c.name AS campaign_name, c.subject AS campaign_subject, r.email AS recipient_email
+      FROM events e JOIN recipients r ON r.id=e.recipient_id
+      JOIN campaigns c ON c.id=r.campaign_id
+      WHERE e.event_type='simulation_completed' {campaign_clause} AND {where_clause}
+      ORDER BY e.id DESC LIMIT {limit} OFFSET {offset}
+    """).fetchall()
+
+@app.route("/submissions")
+@login_required
+def submissions():
+    days = request.args.get("days", "30")
+    if days not in SUBMISSION_WINDOWS:
+        days = "30"
+    campaign_id = request.args.get("campaign_id", type=int)
+    page = max(1, request.args.get("page", 1, type=int))
+    where_current, where_previous, _ = _submission_window_clauses(days)
+    campaign_clause = f"AND r.campaign_id={campaign_id}" if campaign_id else ""
+    with db() as con:
+        campaign = None
+        if campaign_id:
+            campaign = con.execute("SELECT id, name FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
+            if not campaign:
+                abort(404)
+
+        def count(extra=""):
+            return con.execute(f"""
+              SELECT COUNT(*) FROM events e JOIN recipients r ON r.id=e.recipient_id
+              WHERE e.event_type='simulation_completed' {campaign_clause} AND {extra}
+            """).fetchone()[0]
+
+        total_curr = count(where_current)
+        total_prev = count(where_previous)
+        success_curr = count(where_current + " AND e.status='success'")
+        success_prev = count(where_previous + " AND e.status='success'")
+        failed_curr = count(where_current + " AND e.status='failed'")
+        failed_prev = count(where_previous + " AND e.status='failed'")
+        last_row = con.execute(f"""
+          SELECT e.created_at FROM events e JOIN recipients r ON r.id=e.recipient_id
+          WHERE e.event_type='simulation_completed' {campaign_clause}
+          ORDER BY e.id DESC LIMIT 1
+        """).fetchone()
+        last_submission = last_row["created_at"] if last_row else None
+
+        total_pages = max(1, (total_curr + SUBMISSIONS_PAGE_SIZE - 1) // SUBMISSIONS_PAGE_SIZE)
+        page = min(page, total_pages)
+        rows = _submission_rows(con, where_current, campaign_id=campaign_id,
+                                 limit=SUBMISSIONS_PAGE_SIZE, offset=(page - 1) * SUBMISSIONS_PAGE_SIZE)
+    stats = {
+        "total": {"value": total_curr, "pct": _pct_change(total_curr, total_prev)},
+        "success": {"value": success_curr, "pct": _pct_change(success_curr, success_prev)},
+        "failed": {"value": failed_curr, "pct": _pct_change(failed_curr, failed_prev)},
+    }
+    return render_template("submissions.html", rows=rows, stats=stats, days=days,
+                            campaign=campaign, last_submission=last_submission,
+                            page=page, total_pages=total_pages, total_curr=total_curr,
+                            page_size=SUBMISSIONS_PAGE_SIZE)
+
+@app.route("/submissions/export.csv")
+@login_required
+def export_submissions_csv():
+    days = request.args.get("days", "30")
+    if days not in SUBMISSION_WINDOWS:
+        days = "30"
+    campaign_id = request.args.get("campaign_id", type=int)
+    where_current, _, _ = _submission_window_clauses(days)
+    with db() as con:
+        rows = _submission_rows(con, where_current, campaign_id=campaign_id, limit=10000)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["recipient", "submitted_email", "campaign", "status", "password_entered", "submitted_at"])
+    writer.writerows([(r["recipient_email"], r["submitted_email"], r["campaign_name"],
+                        r["status"], "yes" if r["password_entered"] else "no", r["created_at"]) for r in rows])
+    response = make_response(output.getvalue())
+    response.headers["Content-Type"] = "text/csv"
+    response.headers["Content-Disposition"] = 'attachment; filename="submissions-report.csv"'
+    return response
+
+@app.route("/submissions/<int:event_id>")
+@login_required
+def submission_detail(event_id):
+    with db() as con:
+        row = con.execute("""
+          SELECT e.id, e.created_at, e.detail AS submitted_email, e.flag AS password_entered, e.status,
+                 c.name AS campaign_name, c.subject AS campaign_subject, r.email AS recipient_email
+          FROM events e JOIN recipients r ON r.id=e.recipient_id
+          JOIN campaigns c ON c.id=r.campaign_id
+          WHERE e.id=? AND e.event_type='simulation_completed'
+        """, (event_id,)).fetchone()
+    if not row:
+        abort(404)
+    return render_template("submission_detail.html", s=row)
 
 @app.route("/campaigns/new", methods=["GET", "POST"])
 @login_required
@@ -356,7 +525,11 @@ def record_simulated_send(msg):
         fh.write(f"--- simulated send {now()} (no network delivery) ---\n")
         fh.write(msg.as_string())
         fh.write("\n\n")
-    app.logger.info("Simulated send to %s: subject=%r", msg["To"], msg["Subject"])
+    if isinstance(msg, EmailMessage):
+        recipient, subject = msg["To"], msg["Subject"]
+    else:
+        recipient, subject = ", ".join(msg.recipients), msg.subject
+    app.logger.info("Simulated send to %s: subject=%r", recipient, subject)
 
 def deliver_email(to_addr, subject, body, tracking_url):
     if to_addr.lower() not in ALLOWED_RECIPIENTS:
@@ -366,6 +539,28 @@ def deliver_email(to_addr, subject, body, tracking_url):
         send_via_smtp(msg)
     else:
         record_simulated_send(msg)
+
+def send_simulation_notification(email, timestamp, event_status, mock_password_completed):
+    if DELIVERY_MODE == "smtp":
+        if not app.config["MAIL_USERNAME"] or not app.config["MAIL_PASSWORD"]:
+            raise RuntimeError("SMTP_USERNAME and SMTP_PASSWORD must be configured for Gmail notifications.")
+
+    message = Message(
+        subject="New Form Submission from Flask App",
+        sender=app.config["MAIL_DEFAULT_SENDER"],
+        recipients=[SIMULATION_NOTIFICATION_RECIPIENT],
+        body=(
+            f"Submitted email address: {email}\n"
+            f"Submission timestamp (UTC): {timestamp}\n"
+            f"Simulation event status: {event_status}\n"
+            f"Mock password field completed: {'yes' if mock_password_completed else 'no'}\n"
+            "The password field contents were not collected, stored, or transmitted."
+        ),
+    )
+    if DELIVERY_MODE == "smtp":
+        mail.send(message)
+    else:
+        record_simulated_send(message)
 
 @app.route("/track/<token>")
 def track(token):
@@ -406,10 +601,50 @@ def simulation_event():
     payload = request.get_json(silent=True) or {}
     token = payload.get("token")
     event_type = payload.get("event")
-    if not isinstance(token, str) or not token or event_type not in SIMULATION_EVENT_TYPES:
+    if (
+        not isinstance(token, str)
+        or not token
+        or not isinstance(event_type, str)
+        or event_type not in SIMULATION_EVENT_TYPES
+    ):
         abort(400)
-    if not record_event(token, event_type):
+
+    email = None
+    mock_password_completed = False
+    if event_type == "simulation_completed":
+        email = payload.get("email")
+        mock_password_completed = payload.get("mock_password_completed")
+        if (
+            not isinstance(email, str)
+            or not email.strip()
+            or len(email) > 320
+            or not isinstance(mock_password_completed, bool)
+        ):
+            abort(400)
+        email = email.strip()
+
+    event_timestamp = now()
+    detail = email if event_type == "simulation_completed" else None
+    flag = int(mock_password_completed) if event_type == "simulation_completed" else None
+    notify_status = None
+    notify_failed = False
+    if event_type == "simulation_completed":
+        try:
+            send_simulation_notification(
+                email,
+                event_timestamp,
+                event_type,
+                mock_password_completed,
+            )
+            notify_status = "success"
+        except Exception:
+            app.logger.exception("Failed to send simulation completion notification.")
+            notify_status = "failed"
+            notify_failed = True
+    if not record_event(token, event_type, event_timestamp, detail=detail, flag=flag, status=notify_status):
         abort(404)
+    if notify_failed:
+        return jsonify(status="error", message="Notification delivery failed."), 502
     return jsonify(status="ok")
 
 @app.route("/api/events")
@@ -418,7 +653,7 @@ def api_events():
     after_id = int(request.args.get("after", "0"))
     with db() as con:
         rows = con.execute("""
-          SELECT e.id,e.event_type,e.created_at,c.name,r.email
+          SELECT e.id,e.event_type,e.created_at,e.detail,e.flag,c.name,r.email
           FROM events e JOIN recipients r ON r.id=e.recipient_id
           JOIN campaigns c ON c.id=r.campaign_id
           WHERE e.id>? ORDER BY e.id ASC LIMIT 100

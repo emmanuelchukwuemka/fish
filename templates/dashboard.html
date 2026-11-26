@@ -1,10 +1,47 @@
-{% extends "base.html" %}{% block content %}
-<div class="heading"><div><p class="eyebrow">OVERVIEW</p><h1>Campaign dashboard</h1><p class="muted">Monitor approved awareness exercises.</p></div><a class="button primary" href="{{ url_for('new_campaign') }}">＋ New campaign</a></div>
-<div class="stats"><div class="stat"><span>Total campaigns</span><strong>{{ campaigns|length }}</strong></div><div class="stat"><span>Opens</span><strong id="opens">{{ campaigns|sum(attribute='opens') }}</strong></div><div class="stat"><span>Link clicks</span><strong id="clicks">{{ campaigns|sum(attribute='clicks') }}</strong></div><div class="stat"><span>Form attempts</span><strong id="submissions">{{ campaigns|sum(attribute='submissions') }}</strong></div></div>
-<div class="stats"><div class="stat"><span>Delivered</span><strong id="delivered">{{ campaigns|sum(attribute='delivered') }}</strong></div><div class="stat"><span>Simulation visits</span><strong id="sim_visits">{{ campaigns|sum(attribute='sim_visits') }}</strong></div><div class="stat"><span>Reached email step</span><strong id="email_stage">{{ campaigns|sum(attribute='email_stage') }}</strong></div><div class="stat"><span>Reached password step</span><strong id="password_stage">{{ campaigns|sum(attribute='password_stage') }}</strong></div><div class="stat"><span>Completed simulation</span><strong id="completed">{{ campaigns|sum(attribute='completed') }}</strong></div></div>
-<section class="card"><div class="section-head"><h2>Campaigns</h2><span class="muted small">Live updates every 5 seconds</span></div>
-{% if campaigns %}<div class="table-wrap"><table><thead><tr><th>Campaign</th><th>Recipients</th><th>Delivered</th><th>Opens</th><th>Clicks</th><th>Attempts</th><th>Sim visits</th><th>Email step</th><th>Pwd step</th><th>Completed</th><th>Report</th></tr></thead><tbody>{% for c in campaigns %}<tr><td><b>{{ c.name }}</b><small>{{ c.created_at }}</small></td><td>{{ c.recipient_count }}</td><td>{{ c.delivered }}</td><td>{{ c.opens }}</td><td>{{ c.clicks }}</td><td>{{ c.submissions }}</td><td>{{ c.sim_visits }}</td><td>{{ c.email_stage }}</td><td>{{ c.password_stage }}</td><td>{{ c.completed }}</td><td><a href="{{ url_for('export_csv',campaign_id=c.id) }}">CSV ↓</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">No campaigns yet. Create your first authorized test campaign.</p>{% endif %}</section>
-<section class="card"><div class="section-head"><h2>Recent activity</h2><span class="live"><i></i> LIVE</span></div><div id="activity" class="activity">{% for e in recent %}<div class="event"><span class="event-dot"></span><div><b>{{ e.event_type|replace('_',' ')|title }}</b><span>{{ e.email }} · {{ e.name }}</span></div><time>{{ e.created_at }}</time></div>{% else %}<p class="muted">Activity will appear here.</p>{% endfor %}</div></section>
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block content %}
+<div class="heading"><div><p class="eyebrow">OVERVIEW</p><h1>Welcome back, {{ admin_username|capitalize }}</h1><p class="muted">Here's what's happening with your awareness campaigns.</p></div><a class="button primary" href="{{ url_for('new_campaign') }}">{{ icon('send') }} New campaign</a></div>
+
+<div class="stats">
+  <div class="stat-card"><span class="stat-icon blue">{{ icon('send') }}</span><span>Total campaigns</span><strong>{{ campaigns|length }}</strong></div>
+  <div class="stat-card"><span class="stat-icon teal">{{ icon('truck') }}</span><span>Delivered</span><strong id="delivered">{{ campaigns|sum(attribute='delivered') }}</strong></div>
+  <div class="stat-card"><span class="stat-icon blue">{{ icon('mail') }}</span><span>Opens</span><strong id="opens">{{ campaigns|sum(attribute='opens') }}</strong></div>
+  <div class="stat-card"><span class="stat-icon purple">{{ icon('click') }}</span><span>Link clicks</span><strong id="clicks">{{ campaigns|sum(attribute='clicks') }}</strong></div>
+</div>
+<div class="stats">
+  <div class="stat-card"><span class="stat-icon orange">{{ icon('lock') }}</span><span>Form attempts</span><strong id="submissions">{{ campaigns|sum(attribute='submissions') }}</strong></div>
+  <div class="stat-card"><span class="stat-icon blue">{{ icon('eye') }}</span><span>Simulation visits</span><strong id="sim_visits">{{ campaigns|sum(attribute='sim_visits') }}</strong></div>
+  <div class="stat-card"><span class="stat-icon orange">{{ icon('at') }}</span><span>Reached email step</span><strong id="email_stage">{{ campaigns|sum(attribute='email_stage') }}</strong></div>
+  <div class="stat-card"><span class="stat-icon purple">{{ icon('lock') }}</span><span>Reached password step</span><strong id="password_stage">{{ campaigns|sum(attribute='password_stage') }}</strong></div>
+  <div class="stat-card"><span class="stat-icon green">{{ icon('check') }}</span><span>Completed</span><strong id="completed">{{ campaigns|sum(attribute='completed') }}</strong></div>
+</div>
+
+<div class="two-col">
+  <section class="card">
+    <div class="section-head"><h2>Campaigns</h2><span class="muted small">Live updates every 5 seconds</span></div>
+    {% if campaigns %}<div class="table-wrap"><table><thead><tr><th>Campaign</th><th>Recipients</th><th>Delivered</th><th>Opens</th><th>Clicks</th><th>Attempts</th><th>Sim visits</th><th>Email step</th><th>Pwd step</th><th>Completed</th><th>Submissions</th><th>Report</th></tr></thead><tbody>{% for c in campaigns %}<tr><td><b>{{ c.name }}</b><small>{{ c.created_at }}</small></td><td>{{ c.recipient_count }}</td><td>{{ c.delivered }}</td><td>{{ c.opens }}</td><td>{{ c.clicks }}</td><td>{{ c.submissions }}</td><td>{{ c.sim_visits }}</td><td>{{ c.email_stage }}</td><td>{{ c.password_stage }}</td><td>{{ c.completed }}</td><td><a class="btn-outline sm" href="{{ url_for('submissions', campaign_id=c.id) }}">View</a></td><td><a class="btn-view" href="{{ url_for('export_csv',campaign_id=c.id) }}">CSV ↓</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">No campaigns yet. Create your first authorized test campaign.</p>{% endif %}
+  </section>
+
+  <section class="card chart-card">
+    <div class="chart-head"><h2>Weekly completions</h2><div class="chart-value"><strong>{{ chart_counts|sum }}</strong><span>LAST 7 DAYS</span></div></div>
+    <svg class="chart-svg" id="weeklyChart" viewBox="0 0 320 160" preserveAspectRatio="none"></svg>
+  </section>
+</div>
+
+<section class="card"><div class="section-head"><h2>Recent activity</h2><span class="live"><i></i> LIVE</span></div><div id="activity" class="activity">
+{% for e in recent %}<div class="event">
+{% if e.event_type == 'open' %}<span class="event-icon blue">{{ icon('mail') }}</span>
+{% elif e.event_type == 'click' %}<span class="event-icon purple">{{ icon('click') }}</span>
+{% elif e.event_type == 'submission_attempt' %}<span class="event-icon orange">{{ icon('lock') }}</span>
+{% elif e.event_type == 'simulation_visit' %}<span class="event-icon blue">{{ icon('eye') }}</span>
+{% elif e.event_type == 'email_stage' %}<span class="event-icon orange">{{ icon('at') }}</span>
+{% elif e.event_type == 'password_stage' %}<span class="event-icon purple">{{ icon('lock') }}</span>
+{% elif e.event_type == 'simulation_completed' %}<span class="event-icon green">{{ icon('check') }}</span>
+{% else %}<span class="event-icon blue"></span>{% endif %}
+<div><b>{{ e.event_type|replace('_',' ')|title }}</b><span>{{ e.email }} · {{ e.name }}</span></div>
+<time data-iso="{{ e.created_at }}">{{ e.created_at }}</time>
+</div>{% else %}<p class="muted">Activity will appear here.</p>{% endfor %}
+</div></section>
+
 <section class="card"><div class="section-head"><h2>Gammadyne Mailer</h2><span class="muted small">Dry run by default · live sending requires GAMMADYNE_SYNTAX_VERIFIED=true</span></div>
 {% if not gammadyne_configured %}<p class="muted">GAMMADYNE_EXE_PATH is not set in .env — configure it to enable this integration.</p>{% endif %}
 {% if campaigns %}
@@ -15,4 +52,33 @@
 {% else %}<p class="muted">Create a campaign first, then submit it to Gammadyne as an alternative to SMTP.</p>{% endif %}
 {% if gammadyne_jobs %}<div class="table-wrap"><table><thead><tr><th>Campaign</th><th>Dry run</th><th>Status</th><th>Recipients</th><th>Exit code</th><th>Error</th><th>Per-recipient result</th><th>Created</th></tr></thead><tbody>{% for j in gammadyne_jobs %}<tr><td>{{ j.campaign_name }}</td><td>{{ 'yes' if j.dry_run else 'no' }}</td><td>{{ j.status }}</td><td>{{ j.recipient_count }}</td><td>{{ j.exit_code if j.exit_code is not none else '—' }}</td><td class="small">{{ j.error or '—' }}</td><td class="small wrap-cell">{{ j.stdout or '—' }}</td><td>{{ j.created_at }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">No Gammadyne jobs submitted yet.</p>{% endif %}
 </section>
+
+<script>
+window.PHISHLAB_CHART = {labels: {{ chart_labels|tojson }}, counts: {{ chart_counts|tojson }}};
+(function(){
+  const data = window.PHISHLAB_CHART;
+  const svg = document.getElementById("weeklyChart");
+  if (!data || !svg) return;
+  const w = 320, h = 160, padL = 10, padR = 10, padT = 10, padB = 22;
+  const max = Math.max(1, ...data.counts);
+  const stepX = (w - padL - padR) / ((data.counts.length - 1) || 1);
+  const points = data.counts.map((c, i) => [padL + i * stepX, padT + (h - padT - padB) * (1 - c / max)]);
+  const ns = "http://www.w3.org/2000/svg";
+  function el(tag, attrs){ const e = document.createElementNS(ns, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+  for (let i=0;i<=3;i++){
+    const y = padT + (h-padT-padB) * (i/3);
+    svg.appendChild(el("line", {x1:padL,y1:y,x2:w-padR,y2:y,class:"grid-line"}));
+  }
+  const lineD = points.map((p,i)=> (i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+  const areaD = lineD + ` L${points[points.length-1][0]},${h-padB} L${points[0][0]},${h-padB} Z`;
+  svg.appendChild(el("path", {d: areaD, class:"area"}));
+  svg.appendChild(el("path", {d: lineD, class:"line"}));
+  points.forEach((p,i)=>{
+    svg.appendChild(el("circle", {cx:p[0], cy:p[1], r:3.5, class:"dot"}));
+    const label = el("text", {x:p[0], y:h-6, "text-anchor":"middle", class:"axis"});
+    label.textContent = data.labels[i];
+    svg.appendChild(label);
+  });
+})();
+</script>
 <script src="{{ url_for('static',filename='dashboard.js') }}"></script>{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block content %}
+<div class="heading">
+  <a class="back" href="{{ url_for('dashboard') }}">← Back to campaigns</a>
+  <span class="live" id="autoRefresh"><i></i> Auto-refresh: ON</span>
+</div>
+<div class="heading" style="margin-top:4px">
+  <div class="heading-with-icon">
+    <span class="page-icon">{{ icon('send') }}</span>
+    <div><p class="eyebrow">SUBMISSIONS</p><h1>{{ 'View submissions' if campaign else 'Submissions' }}</h1><p class="muted">{{ 'Submissions for: ' + campaign.name if campaign else 'Across all campaigns.' }}</p></div>
+  </div>
+  <select class="days-select" onchange="location.href='?days='+this.value+'{{ ('&campaign_id=' ~ campaign.id) if campaign else '' }}'">
+    <option value="7" {{ 'selected' if days=='7' }}>Last 7 days</option>
+    <option value="30" {{ 'selected' if days=='30' }}>Last 30 days</option>
+    <option value="90" {{ 'selected' if days=='90' }}>Last 90 days</option>
+    <option value="all" {{ 'selected' if days=='all' }}>All time</option>
+  </select>
+</div>
+
+<div class="stats">
+  <div class="stat-card"><div class="stat-card-row"><div class="stat-left"><span class="stat-icon blue">{{ icon('mail') }}</span><div><span>Total submissions</span><strong>{{ stats.total.value }}</strong></div></div>{% if stats.total.pct is not none %}<span class="stat-pct {{ 'up' if stats.total.pct >= 0 else 'down' }}">{{ '↑' if stats.total.pct >= 0 else '↓' }} {{ stats.total.pct|abs }}%</span>{% endif %}</div></div>
+  <div class="stat-card"><div class="stat-card-row"><div class="stat-left"><span class="stat-icon green">{{ icon('check') }}</span><div><span>Successful</span><strong>{{ stats.success.value }}</strong></div></div>{% if stats.success.pct is not none %}<span class="stat-pct {{ 'up' if stats.success.pct >= 0 else 'down' }}">{{ '↑' if stats.success.pct >= 0 else '↓' }} {{ stats.success.pct|abs }}%</span>{% endif %}</div></div>
+  <div class="stat-card"><div class="stat-card-row"><div class="stat-left"><span class="stat-icon red">{{ icon('alert') }}</span><div><span>Failed</span><strong>{{ stats.failed.value }}</strong></div></div>{% if stats.failed.pct is not none %}<span class="stat-pct {{ 'up' if stats.failed.pct >= 0 else 'down' }}">{{ '↑' if stats.failed.pct >= 0 else '↓' }} {{ stats.failed.pct|abs }}%</span>{% endif %}</div></div>
+  <div class="stat-card"><div class="stat-card-row"><div class="stat-left"><span class="stat-icon purple">{{ icon('clock') }}</span><div><span>Last submission</span><strong>{% if last_submission %}<time data-iso="{{ last_submission }}">{{ last_submission }}</time>{% else %}—{% endif %}</strong></div></div></div></div>
+</div>
+
+<section class="card">
+  <div class="section-head"><h2>{{ icon('bars') }} Submission logs</h2><a class="btn-outline" href="{{ url_for('export_submissions_csv', days=days, campaign_id=campaign.id if campaign else none) }}">{{ icon('download') }} Export CSV</a></div>
+  {% if rows %}<div class="table-wrap"><table><thead><tr><th>#</th><th>Subject</th><th>Email</th><th>Password</th><th>Date submitted</th><th>Status</th><th>Action</th></tr></thead><tbody>
+  {% for s in rows %}<tr>
+    <td>{{ (page - 1) * page_size + loop.index }}</td>
+    <td>{{ s.campaign_subject }}</td>
+    <td>{{ s.submitted_email or '—' }}</td>
+    <td>{% if s.password_entered %}<span class="pw-mask" data-revealed="false"><span class="pw-dots">••••••••</span><span class="pw-real hidden">Not stored (by design)</span><button type="button" class="pw-toggle" aria-label="Toggle password status">{{ icon('eye') }}</button></span>{% else %}—{% endif %}</td>
+    <td><time data-iso="{{ s.created_at }}">{{ s.created_at }}</time></td>
+    <td><span class="badge {{ 'success' if s.status == 'success' else 'failed' }}">{{ 'Success' if s.status == 'success' else 'Failed' }}</span></td>
+    <td><a class="btn-outline sm" href="{{ url_for('submission_detail', event_id=s.id) }}">View</a></td>
+  </tr>{% endfor %}
+  </tbody></table></div>
+  <div class="pagination">
+    <span class="muted small">Showing {{ (page - 1) * page_size + 1 }}–{{ (page - 1) * page_size + rows|length }} of {{ total_curr }} submissions</span>
+    <div class="page-links">
+      {% if page > 1 %}<a class="btn-outline sm" href="?days={{ days }}&page={{ page - 1 }}{{ '&campaign_id=' ~ campaign.id if campaign else '' }}">‹</a>{% endif %}
+      {% for p in range(1, total_pages + 1) %}<a class="page-num {{ 'active' if p == page }}" href="?days={{ days }}&page={{ p }}{{ '&campaign_id=' ~ campaign.id if campaign else '' }}">{{ p }}</a>{% endfor %}
+      {% if page < total_pages %}<a class="btn-outline sm" href="?days={{ days }}&page={{ page + 1 }}{{ '&campaign_id=' ~ campaign.id if campaign else '' }}">›</a>{% endif %}
+    </div>
+  </div>
+  {% else %}<p class="muted">No submissions in this period.</p>{% endif %}
+</section>
+
+<script>
+setTimeout(function(){ location.reload(); }, 20000);
+</script>
+{% endblock %}
