@@ -1,7 +1,9 @@
-import os, csv, io, json, secrets, sqlite3, smtplib
+import os, csv, io, json, secrets, smtplib
 from datetime import datetime, timezone, timedelta
 from email.message import EmailMessage
 from functools import wraps
+import psycopg
+from psycopg.rows import dict_row
 from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, jsonify, make_response
 from flask_mail import Mail, Message
 from werkzeug.security import check_password_hash
@@ -28,7 +30,9 @@ app.config.update(
     ),
 )
 mail = Mail(app)
-DB_PATH = os.getenv("DATABASE_PATH", "phishlab.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not configured (expected a Postgres/Neon connection string).")
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:5000").rstrip("/")
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
@@ -43,123 +47,74 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 def db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+
+EVENT_TYPES = ("simulation_visit", "email_stage", "password_stage", "simulation_completed")
 
 def init_db():
     with db() as con:
-        con.executescript("""
-        CREATE TABLE IF NOT EXISTS campaigns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            subject TEXT NOT NULL,
-            body TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS recipients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            campaign_id INTEGER NOT NULL REFERENCES campaigns(id),
-            email TEXT NOT NULL,
-            token TEXT NOT NULL UNIQUE,
-            sent_at TEXT,
-            UNIQUE(campaign_id, email)
-        );
-        CREATE TABLE IF NOT EXISTS events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            recipient_id INTEGER NOT NULL REFERENCES recipients(id),
-            event_type TEXT NOT NULL CHECK(event_type IN ('open','click','submission_attempt')),
-            created_at TEXT NOT NULL
-        );
-        """)
-
-EVENT_TYPES = (
-    "open", "click", "submission_attempt",
-    "simulation_visit", "email_stage", "password_stage", "simulation_completed",
-)
-
-def migrate_db():
-    with db() as con:
-        row = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='events'").fetchone()
-        if row and "simulation_visit" not in row["sql"]:
-            con.executescript(f"""
-            BEGIN TRANSACTION;
-            ALTER TABLE events RENAME TO events_old;
-            CREATE TABLE events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                recipient_id INTEGER NOT NULL REFERENCES recipients(id),
-                event_type TEXT NOT NULL CHECK(event_type IN ({",".join("'" + t + "'" for t in EVENT_TYPES)})),
-                created_at TEXT NOT NULL
-            );
-            INSERT INTO events (id, recipient_id, event_type, created_at)
-                SELECT id, recipient_id, event_type, created_at FROM events_old;
-            DROP TABLE events_old;
-            COMMIT;
-            """)
-
-def migrate_delivery_jobs():
-    with db() as con:
-        con.executescript("""
-        CREATE TABLE IF NOT EXISTS delivery_jobs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            campaign_id INTEGER NOT NULL REFERENCES campaigns(id),
-            provider TEXT NOT NULL CHECK(provider IN ('smtp','gammadyne')),
-            status TEXT NOT NULL CHECK(status IN ('dry_run','blocked','error','approved','running','completed','failed')),
-            dry_run INTEGER NOT NULL DEFAULT 1,
-            recipient_count INTEGER NOT NULL DEFAULT 0,
-            command TEXT,
-            exit_code INTEGER,
-            stdout TEXT,
-            stderr TEXT,
-            error TEXT,
-            requested_by TEXT,
-            approved_by TEXT,
-            created_at TEXT NOT NULL,
-            started_at TEXT,
-            finished_at TEXT
-        );
-        -- Only one non-dry-run job may ever reach approved/running/completed per
-        -- campaign+provider, so a campaign can't be re-approved and double-sent.
-        -- Failed/blocked/error live attempts are excluded so a fixed config can retry.
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_delivery_jobs_live_unique
-            ON delivery_jobs(campaign_id, provider)
-            WHERE dry_run=0 AND status IN ('approved','running','completed');
-        """)
-
-def _record_delivery_job(campaign_id, provider, result, requested_by=None, approved_by=None):
-    with db() as con:
         con.execute("""
-            INSERT INTO delivery_jobs
-              (campaign_id, provider, status, dry_run, recipient_count, command, exit_code,
-               stdout, stderr, error, requested_by, approved_by, created_at, started_at, finished_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            campaign_id, provider, result.status, int(result.dry_run), result.recipient_count,
-            json.dumps(result.command) if result.command else None, result.exit_code,
-            (result.stdout or None), (result.stderr or None), result.error,
-            requested_by, approved_by, now(), result.started_at, result.finished_at,
-        ))
-
-def migrate_event_details():
-    with db() as con:
-        cols = {row["name"] for row in con.execute("PRAGMA table_info(events)")}
-        if "detail" not in cols:
-            con.execute("ALTER TABLE events ADD COLUMN detail TEXT")
-        if "flag" not in cols:
-            con.execute("ALTER TABLE events ADD COLUMN flag INTEGER")
-        if "detail2" not in cols:
-            con.execute("ALTER TABLE events ADD COLUMN detail2 TEXT")
-        if "status" not in cols:
-            con.execute("ALTER TABLE events ADD COLUMN status TEXT")
-            # Backfill: every completed exercise before this column existed ran
-            # in the default simulation delivery mode, where notification send
-            # never fails, so treating historical rows as 'success' is accurate.
-            con.execute("UPDATE events SET status='success' WHERE event_type='simulation_completed' AND status IS NULL")
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS recipients (
+                id SERIAL PRIMARY KEY,
+                campaign_id INTEGER NOT NULL REFERENCES campaigns(id),
+                email TEXT NOT NULL,
+                token TEXT NOT NULL UNIQUE,
+                sent_at TEXT,
+                UNIQUE(campaign_id, email)
+            )
+        """)
+        event_types_sql = ",".join(f"'{t}'" for t in EVENT_TYPES)
+        con.execute(f"""
+            CREATE TABLE IF NOT EXISTS events (
+                id SERIAL PRIMARY KEY,
+                recipient_id INTEGER NOT NULL REFERENCES recipients(id),
+                event_type TEXT NOT NULL CHECK(event_type IN ({event_types_sql})),
+                created_at TEXT NOT NULL,
+                detail TEXT,
+                detail2 TEXT,
+                flag INTEGER,
+                status TEXT
+            )
+        """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS delivery_jobs (
+                id SERIAL PRIMARY KEY,
+                campaign_id INTEGER NOT NULL REFERENCES campaigns(id),
+                provider TEXT NOT NULL CHECK(provider IN ('smtp','gammadyne')),
+                status TEXT NOT NULL CHECK(status IN ('dry_run','blocked','error','approved','running','completed','failed')),
+                dry_run INTEGER NOT NULL DEFAULT 1,
+                recipient_count INTEGER NOT NULL DEFAULT 0,
+                command TEXT,
+                exit_code INTEGER,
+                stdout TEXT,
+                stderr TEXT,
+                error TEXT,
+                requested_by TEXT,
+                approved_by TEXT,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                finished_at TEXT
+            )
+        """)
+        # Only one non-dry-run job may ever reach approved/running/completed per
+        # campaign+provider, so a campaign can't be re-approved and double-sent.
+        # Failed/blocked/error live attempts are excluded so a fixed config can retry.
+        con.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_delivery_jobs_live_unique
+                ON delivery_jobs(campaign_id, provider)
+                WHERE dry_run=0 AND status IN ('approved','running','completed')
+        """)
 
 init_db()
-migrate_db()
-migrate_delivery_jobs()
-migrate_event_details()
 
 def login_required(fn):
     @wraps(fn)
@@ -171,10 +126,10 @@ def login_required(fn):
 
 def record_event(token, event_type, created_at=None, detail=None, detail2=None, status=None):
     with db() as con:
-        recipient = con.execute("SELECT id FROM recipients WHERE token=?", (token,)).fetchone()
+        recipient = con.execute("SELECT id FROM recipients WHERE token=%s", (token,)).fetchone()
         if not recipient:
             return False
-        con.execute("INSERT INTO events(recipient_id,event_type,created_at,detail,detail2,status) VALUES(?,?,?,?,?,?)",
+        con.execute("INSERT INTO events(recipient_id,event_type,created_at,detail,detail2,status) VALUES(%s,%s,%s,%s,%s,%s)",
                     (recipient["id"], event_type, created_at or now(), detail, detail2, status))
         return True
 
@@ -195,8 +150,8 @@ def inject_admin_chrome():
         return {}
     with db() as con:
         captured_count = con.execute(
-            "SELECT COUNT(*) FROM events WHERE event_type='simulation_completed'"
-        ).fetchone()[0]
+            "SELECT COUNT(*) AS n FROM events WHERE event_type='simulation_completed'"
+        ).fetchone()["n"]
     return {"admin_username": ADMIN_USER, "captured_count": captured_count, "delivery_mode": DELIVERY_MODE}
 
 CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -261,13 +216,15 @@ def dashboard():
           WHERE dj.provider='gammadyne'
           ORDER BY dj.id DESC LIMIT 25
         """).fetchall()
+        since = (datetime.now(timezone.utc) - timedelta(days=6)).isoformat(timespec="seconds")
         daily_rows = con.execute("""
-          SELECT date(created_at) AS day, COUNT(*) AS n
-          FROM events WHERE event_type='simulation_completed'
-            AND date(created_at) >= date('now','-6 days')
-          GROUP BY date(created_at)
-        """).fetchall()
-    counts_by_day = {r["day"]: r["n"] for r in daily_rows}
+          SELECT created_at FROM events
+          WHERE event_type='simulation_completed' AND created_at >= %s
+        """, (since,)).fetchall()
+    counts_by_day = {}
+    for r in daily_rows:
+        day = r["created_at"][:10]
+        counts_by_day[day] = counts_by_day.get(day, 0) + 1
     chart_labels, chart_counts = [], []
     for i in range(6, -1, -1):
         day = (datetime.now(timezone.utc) - timedelta(days=i)).date()
@@ -285,9 +242,10 @@ def _submission_window_clauses(days):
     window = SUBMISSION_WINDOWS.get(days, 30)
     if window is None:
         return "1=1", "1=0", None
-    current = f"date(e.created_at) >= date('now','-{window} days')"
-    previous = (f"date(e.created_at) >= date('now','-{window*2} days') "
-                f"AND date(e.created_at) < date('now','-{window} days')")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=window)).isoformat(timespec="seconds")
+    cutoff_prev = (datetime.now(timezone.utc) - timedelta(days=window * 2)).isoformat(timespec="seconds")
+    current = f"e.created_at >= '{cutoff}'"
+    previous = f"e.created_at >= '{cutoff_prev}' AND e.created_at < '{cutoff}'"
     return current, previous, window
 
 def _pct_change(curr, prev):
@@ -319,15 +277,15 @@ def submissions():
     with db() as con:
         campaign = None
         if campaign_id:
-            campaign = con.execute("SELECT id, name FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
+            campaign = con.execute("SELECT id, name FROM campaigns WHERE id=%s", (campaign_id,)).fetchone()
             if not campaign:
                 abort(404)
 
         def count(extra=""):
             return con.execute(f"""
-              SELECT COUNT(*) FROM events e JOIN recipients r ON r.id=e.recipient_id
+              SELECT COUNT(*) AS n FROM events e JOIN recipients r ON r.id=e.recipient_id
               WHERE e.event_type='simulation_completed' {campaign_clause} AND {extra}
-            """).fetchone()[0]
+            """).fetchone()["n"]
 
         total_curr = count(where_current)
         total_prev = count(where_previous)
@@ -385,7 +343,7 @@ def submission_detail(event_id):
                  c.name AS campaign_name, c.subject AS campaign_subject, r.email AS recipient_email
           FROM events e JOIN recipients r ON r.id=e.recipient_id
           JOIN campaigns c ON c.id=r.campaign_id
-          WHERE e.id=? AND e.event_type='simulation_completed'
+          WHERE e.id=%s AND e.event_type='simulation_completed'
         """, (event_id,)).fetchone()
     if not row:
         abort(404)
@@ -410,13 +368,13 @@ def new_campaign():
             flash("Some addresses are not in TEST_RECIPIENTS. Only explicitly allowlisted test inboxes can receive mail.", "error")
             return render_template("new_campaign.html")
         with db() as con:
-            cur = con.execute("INSERT INTO campaigns(name,subject,body,created_at) VALUES(?,?,?,?)",
+            cur = con.execute("INSERT INTO campaigns(name,subject,body,created_at) VALUES(%s,%s,%s,%s) RETURNING id",
                               (name, subject, body, now()))
-            campaign_id = cur.lastrowid
+            campaign_id = cur.fetchone()["id"]
             created = []
             for email in emails:
                 token = secrets.token_urlsafe(24)
-                con.execute("INSERT INTO recipients(campaign_id,email,token) VALUES(?,?,?)",
+                con.execute("INSERT INTO recipients(campaign_id,email,token) VALUES(%s,%s,%s)",
                             (campaign_id, email, token))
                 created.append((email, token))
         sent = 0
@@ -425,7 +383,7 @@ def new_campaign():
             try:
                 deliver_email(email, subject, body, f"{BASE_URL}/simulation/{token}")
                 with db() as con:
-                    con.execute("UPDATE recipients SET sent_at=? WHERE token=?", (now(), token))
+                    con.execute("UPDATE recipients SET sent_at=%s WHERE token=%s", (now(), token))
                 sent += 1
             except Exception as exc:
                 errors.append(f"{email}: {str(exc)[:120]}")
@@ -438,11 +396,11 @@ def new_campaign():
 
 def _campaign_recipients(campaign_id):
     with db() as con:
-        campaign = con.execute("SELECT * FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
+        campaign = con.execute("SELECT * FROM campaigns WHERE id=%s", (campaign_id,)).fetchone()
         if not campaign:
             return None, []
         recipients = [(r["email"], r["token"]) for r in con.execute(
-            "SELECT email, token FROM recipients WHERE campaign_id=?", (campaign_id,))]
+            "SELECT email, token FROM recipients WHERE campaign_id=%s", (campaign_id,))]
         return campaign, recipients
 
 @app.route("/campaigns/<int:campaign_id>/message")
@@ -490,7 +448,7 @@ def gammadyne_approve():
         return redirect(url_for("dashboard"))
     with db() as con:
         existing_live = con.execute("""
-            SELECT id FROM delivery_jobs WHERE campaign_id=? AND provider='gammadyne'
+            SELECT id FROM delivery_jobs WHERE campaign_id=%s AND provider='gammadyne'
               AND dry_run=0 AND status IN ('approved','running','completed')
         """, (campaign_id,)).fetchone()
     if existing_live:
@@ -505,6 +463,20 @@ def gammadyne_approve():
     else:
         flash(f"Gammadyne job not sent: {result.error or result.stderr}", "error")
     return redirect(url_for("dashboard"))
+
+def _record_delivery_job(campaign_id, provider, result, requested_by=None, approved_by=None):
+    with db() as con:
+        con.execute("""
+            INSERT INTO delivery_jobs
+              (campaign_id, provider, status, dry_run, recipient_count, command, exit_code,
+               stdout, stderr, error, requested_by, approved_by, created_at, started_at, finished_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            campaign_id, provider, result.status, int(result.dry_run), result.recipient_count,
+            json.dumps(result.command) if result.command else None, result.exit_code,
+            (result.stdout or None), (result.stderr or None), result.error,
+            requested_by, approved_by, now(), result.started_at, result.finished_at,
+        ))
 
 def build_training_message(to_addr, subject, body, tracking_url):
     msg = EmailMessage()
@@ -582,7 +554,7 @@ SIMULATION_EVENT_TYPES = {"email_stage", "password_stage", "simulation_completed
 @app.route("/simulation/<token>")
 def simulation(token):
     with db() as con:
-        recipient = con.execute("SELECT id FROM recipients WHERE token=?", (token,)).fetchone()
+        recipient = con.execute("SELECT id FROM recipients WHERE token=%s", (token,)).fetchone()
     if not recipient:
         abort(404)
     record_event(token, "simulation_visit")
@@ -651,7 +623,7 @@ def api_events():
           SELECT e.id,e.event_type,e.created_at,e.detail,e.detail2,c.name,r.email
           FROM events e JOIN recipients r ON r.id=e.recipient_id
           JOIN campaigns c ON c.id=r.campaign_id
-          WHERE e.id>? ORDER BY e.id ASC LIMIT 100
+          WHERE e.id>%s ORDER BY e.id ASC LIMIT 100
         """, (after_id,)).fetchall()
         totals = con.execute("""
           SELECT
@@ -666,18 +638,18 @@ def api_events():
 @login_required
 def export_csv(campaign_id):
     with db() as con:
-        campaign = con.execute("SELECT name FROM campaigns WHERE id=?", (campaign_id,)).fetchone()
+        campaign = con.execute("SELECT name FROM campaigns WHERE id=%s", (campaign_id,)).fetchone()
         if not campaign:
             abort(404)
         rows = con.execute("""
           SELECT r.email,r.sent_at,e.event_type,e.created_at
           FROM recipients r LEFT JOIN events e ON e.recipient_id=r.id
-          WHERE r.campaign_id=? ORDER BY r.email,e.id
+          WHERE r.campaign_id=%s ORDER BY r.email,e.id
         """, (campaign_id,)).fetchall()
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["recipient", "email_sent_at", "event", "event_at"])
-    writer.writerows([tuple(r) for r in rows])
+    writer.writerows([(r["email"], r["sent_at"], r["event_type"], r["created_at"]) for r in rows])
     response = make_response(output.getvalue())
     response.headers["Content-Type"] = "text/csv"
     response.headers["Content-Disposition"] = f'attachment; filename="campaign-{campaign_id}-report.csv"'
