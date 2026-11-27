@@ -1,8 +1,8 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{ title or "PhishLab" }}</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<title>{{ title or "admin" }}</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
 <body>{% from "_icons.html" import icon %}<div class="shell">
 <aside class="sidebar">
-  <a class="brand" href="{{ url_for('dashboard') }}">{{ icon('shield') }} PhishLab</a>
+  <a class="brand" href="{{ url_for('dashboard') }}">{{ icon('shield') }} admin</a>
   <nav>
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">{{ icon('home') }} Dashboard</a>
     <a href="{{ url_for('new_campaign') }}" class="{{ 'active' if request.endpoint=='new_campaign' }}">{{ icon('send') }} New campaign</a>
